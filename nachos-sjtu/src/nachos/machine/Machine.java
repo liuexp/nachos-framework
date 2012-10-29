@@ -409,7 +409,7 @@ public final class Machine {
 	private static long randomSeed = 0;
 
 	private static File baseDirectory, testDirectory;
-	private static String configFileName = "nachos.conf";
+	private static String configFileName = "/home/liuexp/projects/nachos-framework/nachos-sjtu/conf/proj1.conf";
 
 	private static final String help = "\n"
 			+ "Options:\n"

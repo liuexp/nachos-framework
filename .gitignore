@@ -1,0 +1,4 @@
+mips-x86.linux-xgcc*
+bin/
+*.a
+*.coff
