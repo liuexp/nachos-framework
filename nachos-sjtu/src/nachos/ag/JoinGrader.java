@@ -13,8 +13,8 @@ public class JoinGrader extends BasicTestGrader{
 		// check dependency
 		assertTrue(ThreadedKernel.alarm != null, "This test require alarm.");
 
-		final long waitTicks = getIntegerArgument("waitTicks");
-		long times = getIntegerArgument("times");
+		final long waitTicks = 10;//getIntegerArgument("waitTicks");
+		long times = 100;//getIntegerArgument("times");
 
 		// check argument
 		assertTrue(times > 0, "invalid numThreads argument");

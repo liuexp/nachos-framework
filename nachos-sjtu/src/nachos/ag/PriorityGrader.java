@@ -27,9 +27,9 @@ public class PriorityGrader extends BasicTestGrader {
 		assertTrue(ThreadedKernel.scheduler instanceof PriorityScheduler,
 				"This test need PriorityScheduler.");
 
-		final long threads = getIntegerArgument("threads");
-		final long times = getIntegerArgument("times");
-		final long length = getIntegerArgument("length");
+		final long threads = 60;//getIntegerArgument("threads");
+		final long times = 40;//getIntegerArgument("times");
+		final long length = 30;//getIntegerArgument("length");
 
 		assertTrue(threads > 0, "invalid argument: number of threads");
 		assertTrue(times > 0, "invalid argument: times of test");
@@ -58,6 +58,7 @@ public class PriorityGrader extends BasicTestGrader {
 			for (ThreadHandler handler : handlers) {
 				handler.thread.join();
 			}
+			//assertTrue(KThread.isReadyEmpty(),"readyQueue not empty");
 
 			ready.clear();
 			handlers.clear();

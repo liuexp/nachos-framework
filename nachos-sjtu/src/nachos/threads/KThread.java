@@ -1,7 +1,6 @@
 package nachos.threads;
 
 import nachos.machine.*;
-import nachos.threads.PriorityScheduler.ThreadState;
 
 /**
  * A KThread is a thread that can be used to execute Nachos kernel code. Nachos
@@ -167,6 +166,10 @@ public class KThread {
 
 		Machine.interrupt().restore(intStatus);
 	}
+	
+	public static boolean isReadyEmpty(){
+		return readyQueue.isEmtpy();
+	}
 
 	private void runThread() {
 		begin();
@@ -206,9 +209,13 @@ public class KThread {
 
 		currentThread.status = statusFinished;
 		
-		if(toBeJoined != null)
-			toBeJoined.ready();
-
+		if (currentThread.joinQueue != null) {
+			KThread t = currentThread.joinQueue.nextThread();
+			while(t != null){
+				t.ready();
+				t = currentThread.joinQueue.nextThread();
+			}
+		}
 		sleep();
 	}
 
@@ -287,19 +294,34 @@ public class KThread {
 	 * is not guaranteed to return. This thread must not be the current thread.
 	 */
 	public void join() {
-		Lib.debug(dbgThread, "Joining to thread: " + toString());
+		Lib.debug(dbgThread, "Joining to thread: " + toString() + " from "+ currentThread.toString());
 
 		Lib.assertTrue(this != currentThread);
 		if (status == statusFinished) return;
-		toBeJoined = currentThread;
-		if (schedulingState != null && currentThread.schedulingState != null) {
-			int pa = ((ThreadState) currentThread.schedulingState).getPriority(),
-				pb = ((ThreadState) this.schedulingState).getPriority();
-			((ThreadState)schedulingState).setPriority(pa>pb?pa:pb);
-		}
 		boolean intStatus = Machine.interrupt().disable();
+		if (joinQueue == null) {
+			joinQueue = ThreadedKernel.scheduler.newThreadQueue(true);
+			joinQueue.acquire(this);
+		}
+		joinQueue.waitForAccess(currentThread);
 		sleep();
 		Machine.interrupt().restore(intStatus);
+	}
+	
+	public void dumpJoinQueue(){
+		System.out.println("### join Q dump ##");
+		joinQueue.print();
+		System.out.println("### end of join Q dump ##");
+	}
+	
+	public static void dumpReadyQueue(){
+		System.out.println("########### ready Queue begin####");
+		readyQueue.print();
+		System.out.println("########### ready Queue end####");
+	}
+	
+	public int getState(){
+		return status;
 	}
 
 	/**
@@ -337,6 +359,7 @@ public class KThread {
 			nextThread = idleThread;
 
 		nextThread.run();
+		//dumpReadyQueue();
 	}
 
 	/**
@@ -469,6 +492,7 @@ public class KThread {
 	private static ThreadQueue readyQueue = null;
 	private static KThread currentThread = null;
 	private static KThread toBeDestroyed = null;
-	private static KThread toBeJoined = null;
+	//private static KThread toBeJoined = null;
+	private ThreadQueue joinQueue = null;
 	private static KThread idleThread = null;
 }
