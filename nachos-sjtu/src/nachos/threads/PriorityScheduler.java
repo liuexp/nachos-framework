@@ -72,7 +72,7 @@ public class PriorityScheduler extends Scheduler {
 		int priority = getPriority(thread);
 		if (priority == priorityMaximum)
 		{
-		  Machine.interrupt().restore(intStatus); // bug identified by Xiao Jia @ 2011-11-04
+			Machine.interrupt().restore(intStatus); // bug identified by Xiao Jia @ 2011-11-04
 			return false;
 		}
 
@@ -91,7 +91,7 @@ public class PriorityScheduler extends Scheduler {
 		int priority = getPriority(thread);
 		if (priority == priorityMinimum)
 		{
-		  Machine.interrupt().restore(intStatus); // bug identified by Xiao Jia @ 2011-11-04
+			Machine.interrupt().restore(intStatus); // bug identified by Xiao Jia @ 2011-11-04
 			return false;
 		}
 

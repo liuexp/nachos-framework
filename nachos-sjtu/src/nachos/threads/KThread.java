@@ -1,6 +1,7 @@
 package nachos.threads;
 
 import nachos.machine.*;
+import nachos.threads.PriorityScheduler.ThreadState;
 
 /**
  * A KThread is a thread that can be used to execute Nachos kernel code. Nachos
@@ -204,6 +205,9 @@ public class KThread {
 		toBeDestroyed = currentThread;
 
 		currentThread.status = statusFinished;
+		
+		if(toBeJoined != null)
+			toBeJoined.ready();
 
 		sleep();
 	}
@@ -244,7 +248,7 @@ public class KThread {
 	 * 
 	 * <p>
 	 * If the current thread is blocked (on a synchronization primitive, i.e. a
-	 * <tt>Semaphore</tt>, <tt>Lock</tt>, or <tt>Condition</tt>), eventually
+	 * <tt>Semaphore</tt>, <tt>Lock</tt>, or <tt>Condition2</tt>), eventually
 	 * some thread will wake this thread up, putting it back on the ready queue
 	 * so that it can be rescheduled. Otherwise, <tt>finish()</tt> should have
 	 * scheduled this thread to be destroyed by the next thread to run.
@@ -286,7 +290,16 @@ public class KThread {
 		Lib.debug(dbgThread, "Joining to thread: " + toString());
 
 		Lib.assertTrue(this != currentThread);
-
+		if (status == statusFinished) return;
+		toBeJoined = currentThread;
+		if (schedulingState != null && currentThread.schedulingState != null) {
+			int pa = ((ThreadState) currentThread.schedulingState).getPriority(),
+				pb = ((ThreadState) this.schedulingState).getPriority();
+			((ThreadState)schedulingState).setPriority(pa>pb?pa:pb);
+		}
+		boolean intStatus = Machine.interrupt().disable();
+		sleep();
+		Machine.interrupt().restore(intStatus);
 	}
 
 	/**
@@ -400,7 +413,7 @@ public class KThread {
 		}
 
 		public void run() {
-			for (int i = 0; i < 5; i++) {
+			for (int i = 0; i < 10; i++) {
 				System.out.println("*** thread " + which + " looped " + i
 						+ " times");
 				KThread.yield();
@@ -456,5 +469,6 @@ public class KThread {
 	private static ThreadQueue readyQueue = null;
 	private static KThread currentThread = null;
 	private static KThread toBeDestroyed = null;
+	private static KThread toBeJoined = null;
 	private static KThread idleThread = null;
 }

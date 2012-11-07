@@ -12,6 +12,10 @@ public class Communicator {
 	 * Allocate a new communicator.
 	 */
 	public Communicator() {
+		isMsgSet=false;
+		lock = new Lock();
+		condListener = new Condition(lock);
+		condSpeaker = new Condition(lock);
 	}
 
 	/**
@@ -19,13 +23,21 @@ public class Communicator {
 	 * <i>word</i> to the listener.
 	 * 
 	 * <p>
-	 * Does not return until this thread is paired up with a listening thread.
+	 * Do not return until this thread is paired up with a listening thread.
 	 * Exactly one listener should receive <i>word</i>.
 	 * 
 	 * @param word
 	 *            the integer to transfer.
 	 */
 	public void speak(int word) {
+		lock.acquire();
+		while (isMsgSet) condSpeaker.sleep();
+		msg = word;
+		isMsgSet = true;
+		condListener.wake();
+		condSpeaker.sleep();
+		//this will be woken when there's a listener and then return
+		lock.release();
 	}
 
 	/**
@@ -35,6 +47,17 @@ public class Communicator {
 	 * @return the integer transferred.
 	 */
 	public int listen() {
-		return 0;
+		lock.acquire();
+		while (!isMsgSet) condListener.sleep();
+		isMsgSet = false;
+		int ret = msg;
+		condSpeaker.wakeAll();
+		lock.release();
+		return ret;
 	}
+	
+	private static int msg;
+	private static boolean isMsgSet;
+	private static Condition condListener, condSpeaker;
+	private static Lock lock;
 }

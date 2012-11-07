@@ -187,7 +187,7 @@ public final class Machine {
 			networkLink = new NetworkLink(privilege);
 	}
 
-	@SuppressWarnings("unchecked")
+	@SuppressWarnings({ "rawtypes" })
 	private static void checkUserClasses() {
 		System.out.print(" user-check");
 
@@ -354,7 +354,7 @@ public final class Machine {
 	private static SynchDisk synchDisk = null;
 	private static AutoGrader autoGrader = null;
 
-	private static String autoGraderClassName = "nachos.ag.AutoGrader";
+	private static String autoGraderClassName = "nachos.ag.ThreadGrader2";
 
 	/**
 	 * Return the name of the shell program that a user-programming kernel must
