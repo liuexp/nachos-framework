@@ -2,11 +2,13 @@ package nachos.threads;
 
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
 import java.util.TreeSet;
 
 import nachos.machine.Lib;
 import nachos.machine.Machine;
+import nachos.threads.PriorityScheduler.ThreadState;
 
 /**
  * A scheduler that chooses threads based on their priorities.
@@ -134,6 +136,7 @@ public class PriorityScheduler extends Scheduler {
 	}
 	
 	public static void updatePriority(ThreadState cur) {
+		//Lib.assertTrue(Machine.interrupt().disabled());
 		while(cur != null){
 			int p = cur.priority;
 			for (PriorityQueue t  : cur.owningQueue){
@@ -146,7 +149,30 @@ public class PriorityScheduler extends Scheduler {
 				cur.effectivePriority = p;
 				return;
 			}else {
-				cur.waitingFor.waitQueue.remove(cur);
+				boolean tmp = cur.waitingFor.waitQueue.remove(cur);
+				if (!tmp){
+					/*
+					System.out.println("meow");
+					System.out.println(cur.toString());
+					System.out.println(cur.thread.toString());
+					cur.waitingFor.print();
+					for (ThreadState x : cur.waitingFor.waitQueue){
+						if(x == cur){
+							System.out.println("Got you !!!");
+							Lib.assertTrue(x.equals(cur),"zzz");
+							Lib.assertTrue(cur.waitingFor.waitQueue.comparator().compare(x, cur)==0,"zzz");
+							//Lib.assertTrue(cur.waitingFor.waitQueue.contains(cur),"zzzz");
+						}
+					}*/
+					//FIXME: why contains/remove couldn't find that element?
+					for(Iterator<ThreadState> itr = cur.waitingFor.waitQueue.iterator();itr.hasNext();){
+						if(itr.next().equals(cur))itr.remove();
+					}
+				}
+				
+				//cur.waitingFor.waitQueue.
+				//if(!tmp)tmp=cur.waitingFor.waitQueue.remove(cur);
+				//Lib.assertTrue(tmp);
 				cur.effectivePriority=p;
 				cur.waitingFor.waitQueue.add(cur);
 				if(cur.waitingFor.transferPriority)
@@ -176,17 +202,12 @@ public class PriorityScheduler extends Scheduler {
 
 		public KThread nextThread() {
 			Lib.assertTrue(Machine.interrupt().disabled());
-			//print();
+			print();
 			ThreadState nt=pickNextThread();
 			if(nt != null) {
 				waitQueue.remove(nt);
 				nt.waitingFor=null;
-				//FIXME: use acquire instead
-				//nt.acquire(this);
-				if (transferPriority && owner != null) {
-					updatePriority(owner);
-				}
-
+				nt.acquire(this);
 				return nt.thread;
 			}else
 				return null;
@@ -209,6 +230,12 @@ public class PriorityScheduler extends Scheduler {
 		public void print() {
 			Lib.assertTrue(Machine.interrupt().disabled());
 			System.out.println("==========Scheduling Queue Dumps===========");
+			int a=0;
+			long b=0;
+			if (!waitQueue.isEmpty()){
+				a=waitQueue.first().effectivePriority;
+				b=waitQueue.first().arriveTime;
+			}
 			for (ThreadState t: waitQueue){
 				System.out.println(t.thread.getName()+":\t"+
 						t.getEffectivePriority()+", "+
@@ -216,6 +243,10 @@ public class PriorityScheduler extends Scheduler {
 						t.arriveTime+","+
 						t.thread.getState()+","
 			);
+				Lib.assertTrue(a>t.getEffectivePriority()||(
+						a==t.getEffectivePriority()&&b<=t.arriveTime));
+				a=t.getEffectivePriority();
+				b=t.arriveTime;
 			}
 		}
 
@@ -231,7 +262,7 @@ public class PriorityScheduler extends Scheduler {
 					public int compare(ThreadState a, ThreadState b){
 						int pa = a.getEffectivePriority(),
 							pb = b.getEffectivePriority();
-						return a==b ? 0: pa > pb ? -1:(
+						return a.thread.equals(b.thread) ? 0: pa > pb ? -1:(
 							pb > pa ? 1:(
 								a.arriveTime <= b.arriveTime ? -1:
 									1));
@@ -311,6 +342,9 @@ public class PriorityScheduler extends Scheduler {
 		 * @see nachos.threads.ThreadQueue#waitForAccess
 		 */
 		public void waitForAccess(PriorityQueue waitQueue) {
+			//if (waitQueue.waitQueue.contains(this)) return;
+			waitQueue.waitQueue.remove(this);
+			if(waitingFor != null)waitingFor.waitQueue.remove(this);
 			arriveTime = Machine.timer().getTime();
 			waitQueue.waitQueue.add(this);
 			waitingFor = waitQueue;
@@ -339,7 +373,7 @@ public class PriorityScheduler extends Scheduler {
 					updatePriority(waitQueue.owner);
 			}
 			waitQueue.owner = this;
-			//FIXME:here waitingFor must be preserved?
+			//FIXME: why here waitingFor can't be cleaned-up?
 			//waitingFor = null;
 			owningQueue.add(waitQueue);
 			if (waitQueue.transferPriority)

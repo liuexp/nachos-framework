@@ -354,7 +354,7 @@ public final class Machine {
 	private static SynchDisk synchDisk = null;
 	private static AutoGrader autoGrader = null;
 
-	private static String autoGraderClassName = "nachos.ag.AutoGrader";
+	private static String autoGraderClassName = "nachos.ag.PriorityGraderS1";
 
 	/**
 	 * Return the name of the shell program that a user-programming kernel must

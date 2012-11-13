@@ -28,8 +28,8 @@ public class PriorityGrader extends BasicTestGrader {
 				"This test need PriorityScheduler.");
 
 		final long threads = 60;//getIntegerArgument("threads");
-		final long times = 40;//getIntegerArgument("times");
-		final long length = 30;//getIntegerArgument("length");
+		final long times = 10;//getIntegerArgument("times");
+		final long length = 10;//getIntegerArgument("length");
 
 		assertTrue(threads > 0, "invalid argument: number of threads");
 		assertTrue(times > 0, "invalid argument: times of test");
