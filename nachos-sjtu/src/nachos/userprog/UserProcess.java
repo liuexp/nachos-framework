@@ -217,8 +217,8 @@ public class UserProcess {
 		Lib.debug(dbgProcess, "UserProcess.load(\"" + name + "\")");
 
 		OpenFile executable = ThreadedKernel.fileSystem.open(name, false);
-		fileDescriptors.add(null);
-		fileDescriptors.add(null);
+		fileDescriptors.add(UserKernel.console.openForReading());
+		fileDescriptors.add(UserKernel.console.openForWriting());
 		if (executable == null) {
 			Lib.debug(dbgProcess, "\topen failed");
 			return false;
@@ -458,8 +458,8 @@ public class UserProcess {
 			return handleRead(a0,a1,a2);
 		case syscallWrite:
 			return handleWrite(a0,a1,a2);
-//		case syscallClose:
-//			return handleClose(a0);
+		case syscallClose:
+			return handleClose(a0);
 //		case syscallUnlink:
 //			return handleUnlink(a0);
 
@@ -476,24 +476,17 @@ public class UserProcess {
 	}
 
 	private int handleClose(int a0) {
-		// TODO Auto-generated method stub
+		fileDescriptors.get(a0).close();
+		fileDescriptors.set(a0, null);
 		return 0;
 	}
 
 	private int handleWrite(int a0, int a1, int a2) {
 		try{
-			if(a0==1){//stdout
-				String out = readVirtualMemoryString(a1,a2);
-				for (char c : out.toCharArray()){
-					UserKernel.console.writeByte(c);
-				}
-				return a2;
-			}else {
-				OpenFile f = fileDescriptors.get(a0);
-				byte [] buf = new byte[a2];
-				readVirtualMemory(a1,buf);
-				return f.write(buf, 0, a2);
-			}
+			OpenFile f = fileDescriptors.get(a0);
+			byte [] buf = new byte[a2];
+			readVirtualMemory(a1,buf);
+			return f.write(buf, 0, a2);
 		} catch (Exception e){
 			return -1;
 		}		
@@ -501,18 +494,10 @@ public class UserProcess {
 
 	private int handleRead(int a0, int a1, int a2) {
 		try{
-			if (a0 == 0){ //stdin
-				byte [] buf = new byte[a2];
-				for(int i=0;i<a2;i++){
-					buf[i] = (byte) UserKernel.console.readByte(true);
-				}
-				return writeVirtualMemory(a1,buf);
-			}else {
-				OpenFile f = fileDescriptors.get(a0);
-				byte [] buf = new byte[a2];
-				int ret = f.read(buf, 0, a2);
-				return Math.min(ret, writeVirtualMemory(a1,buf));
-			}
+			OpenFile f = fileDescriptors.get(a0);
+			byte [] buf = new byte[a2];
+			int ret = f.read(buf, 0, a2);
+			return Math.min(ret, writeVirtualMemory(a1,buf));
 		} catch (Exception e){
 			return -1;
 		}
