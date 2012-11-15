@@ -4,6 +4,8 @@ import nachos.machine.*;
 import nachos.threads.*;
 
 import java.io.EOFException;
+import java.util.ArrayList;
+import java.util.HashSet;
 
 /**
  * Encapsulates the state of a user process that is not contained in its user
@@ -215,6 +217,8 @@ public class UserProcess {
 		Lib.debug(dbgProcess, "UserProcess.load(\"" + name + "\")");
 
 		OpenFile executable = ThreadedKernel.fileSystem.open(name, false);
+		fileDescriptors.add(null);
+		fileDescriptors.add(null);
 		if (executable == null) {
 			Lib.debug(dbgProcess, "\topen failed");
 			return false;
@@ -239,6 +243,7 @@ public class UserProcess {
 			}
 			numPages += section.getLength();
 		}
+		Lib.debug(dbgProcess, "number of pages:"+numPages);
 
 		// make sure the argv array will fit in one page
 		byte[][] argv = new byte[args.length][];
@@ -302,7 +307,7 @@ public class UserProcess {
 	protected boolean loadSections() {
 		if (numPages > Machine.processor().getNumPhysPages()) {
 			coff.close();
-			Lib.debug(dbgProcess, "\tinsufficient physical memory");
+			Lib.debug(dbgProcess, "\tinsufficient physical memory numPages="+numPages +", PhysPages="+Machine.processor().getNumPhysPages());
 			return false;
 		}
 
@@ -439,11 +444,113 @@ public class UserProcess {
 		switch (syscall) {
 		case syscallHalt:
 			return handleHalt();
+		case syscallExit:
+			return handleExit(a0);
+		case syscallExec:
+			return handleExec(a0,a1,a2);
+//		case syscallJoin:
+//			return handleJoin(a0,a1);
+		case syscallCreate: 
+			return handleCreate(a0);
+		case syscallOpen:
+			return handleOpen(a0);
+		case syscallRead:
+			return handleRead(a0,a1,a2);
+		case syscallWrite:
+			return handleWrite(a0,a1,a2);
+//		case syscallClose:
+//			return handleClose(a0);
+//		case syscallUnlink:
+//			return handleUnlink(a0);
 
 		default:
 			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
 			Lib.assertNotReached("Unknown system call!");
 		}
+		return 0;
+	}
+
+	private int handleUnlink(int a0) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	private int handleClose(int a0) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	private int handleWrite(int a0, int a1, int a2) {
+		try{
+			if(a0==1){//stdout
+				String out = readVirtualMemoryString(a1,a2);
+				for (char c : out.toCharArray()){
+					UserKernel.console.writeByte(c);
+				}
+				return a2;
+			}else {
+				OpenFile f = fileDescriptors.get(a0);
+				byte [] buf = new byte[a2];
+				readVirtualMemory(a1,buf);
+				return f.write(buf, 0, a2);
+			}
+		} catch (Exception e){
+			return -1;
+		}		
+	}
+
+	private int handleRead(int a0, int a1, int a2) {
+		try{
+			if (a0 == 0){ //stdin
+				byte [] buf = new byte[a2];
+				for(int i=0;i<a2;i++){
+					buf[i] = (byte) UserKernel.console.readByte(true);
+				}
+				return writeVirtualMemory(a1,buf);
+			}else {
+				OpenFile f = fileDescriptors.get(a0);
+				byte [] buf = new byte[a2];
+				int ret = f.read(buf, 0, a2);
+				return Math.min(ret, writeVirtualMemory(a1,buf));
+			}
+		} catch (Exception e){
+			return -1;
+		}
+	}
+
+	private int handleOpen(int a0) {
+		try{
+			String name = readVirtualMemoryString(a0,256);
+			fileDescriptors.add(UserKernel.fileSystem.open(name, false));
+			return fileDescriptors.size()-1;
+		} catch (Exception e){
+			return -1;
+		}
+	}
+
+	private int handleCreate(int a0) {
+		try{
+			String name = readVirtualMemoryString(a0,256);
+			fileDescriptors.add(UserKernel.fileSystem.open(name, true));
+			return fileDescriptors.size()-1;
+		} catch (Exception e){
+			return -1;
+		}
+	}
+
+	private int handleJoin(int a0, int a1) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	private int handleExec(int a0, int a1, int a2) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	private int handleExit(int a0) {
+		//FIXME: how to transfer exit status
+		Machine.halt();
 		return 0;
 	}
 
@@ -492,4 +599,5 @@ public class UserProcess {
 
 	private static final int pageSize = Processor.pageSize;
 	private static final char dbgProcess = 'a';
+	public static ArrayList<OpenFile> fileDescriptors=new ArrayList<OpenFile>();
 }

@@ -150,29 +150,7 @@ public class PriorityScheduler extends Scheduler {
 				return;
 			}else {
 				boolean tmp = cur.waitingFor.waitQueue.remove(cur);
-				if (!tmp){
-					/*
-					System.out.println("meow");
-					System.out.println(cur.toString());
-					System.out.println(cur.thread.toString());
-					cur.waitingFor.print();
-					for (ThreadState x : cur.waitingFor.waitQueue){
-						if(x == cur){
-							System.out.println("Got you !!!");
-							Lib.assertTrue(x.equals(cur),"zzz");
-							Lib.assertTrue(cur.waitingFor.waitQueue.comparator().compare(x, cur)==0,"zzz");
-							//Lib.assertTrue(cur.waitingFor.waitQueue.contains(cur),"zzzz");
-						}
-					}*/
-					//FIXME: why contains/remove couldn't find that element?
-					for(Iterator<ThreadState> itr = cur.waitingFor.waitQueue.iterator();itr.hasNext();){
-						if(itr.next().equals(cur))itr.remove();
-					}
-				}
-				
-				//cur.waitingFor.waitQueue.
-				//if(!tmp)tmp=cur.waitingFor.waitQueue.remove(cur);
-				//Lib.assertTrue(tmp);
+				Lib.assertTrue(tmp);
 				cur.effectivePriority=p;
 				cur.waitingFor.waitQueue.add(cur);
 				if(cur.waitingFor.transferPriority)
@@ -202,7 +180,7 @@ public class PriorityScheduler extends Scheduler {
 
 		public KThread nextThread() {
 			Lib.assertTrue(Machine.interrupt().disabled());
-			print();
+			//print();
 			ThreadState nt=pickNextThread();
 			if(nt != null) {
 				waitQueue.remove(nt);
@@ -243,8 +221,8 @@ public class PriorityScheduler extends Scheduler {
 						t.arriveTime+","+
 						t.thread.getState()+","
 			);
-				Lib.assertTrue(a>t.getEffectivePriority()||(
-						a==t.getEffectivePriority()&&b<=t.arriveTime));
+				//Lib.assertTrue(a>t.getEffectivePriority()||(
+				//		a==t.getEffectivePriority()&&b<=t.arriveTime));
 				a=t.getEffectivePriority();
 				b=t.arriveTime;
 			}
@@ -262,10 +240,10 @@ public class PriorityScheduler extends Scheduler {
 					public int compare(ThreadState a, ThreadState b){
 						int pa = a.getEffectivePriority(),
 							pb = b.getEffectivePriority();
-						return a.thread.equals(b.thread) ? 0: pa > pb ? -1:(
-							pb > pa ? 1:(
-								a.arriveTime <= b.arriveTime ? -1:
-									1));
+						return pa > pb ? -1: pb > pa ? 1:(
+								a.arriveTime < b.arriveTime ? -1:(
+										a.arriveTime > b.arriveTime ? 1:
+											a.thread.compareTo(b.thread)));
 					}
 				});
 		@Override
@@ -342,7 +320,6 @@ public class PriorityScheduler extends Scheduler {
 		 * @see nachos.threads.ThreadQueue#waitForAccess
 		 */
 		public void waitForAccess(PriorityQueue waitQueue) {
-			//if (waitQueue.waitQueue.contains(this)) return;
 			waitQueue.waitQueue.remove(this);
 			if(waitingFor != null)waitingFor.waitQueue.remove(this);
 			arriveTime = Machine.timer().getTime();

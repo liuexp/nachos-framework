@@ -1,5 +1,7 @@
 package nachos.userprog;
 
+import java.util.HashSet;
+
 import nachos.machine.*;
 import nachos.threads.*;
 
@@ -109,5 +111,6 @@ public class UserKernel extends ThreadedKernel {
 
 	/** Globally accessible reference to the synchronized console. */
 	public static SynchConsole console;
+
 
 }

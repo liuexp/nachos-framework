@@ -354,7 +354,7 @@ public final class Machine {
 	private static SynchDisk synchDisk = null;
 	private static AutoGrader autoGrader = null;
 
-	private static String autoGraderClassName = "nachos.ag.PriorityGraderS1";
+	private static String autoGraderClassName = "nachos.ag.AutoGrader";
 
 	/**
 	 * Return the name of the shell program that a user-programming kernel must
@@ -409,7 +409,7 @@ public final class Machine {
 	private static long randomSeed = 0;
 
 	private static File baseDirectory, testDirectory;
-	private static String configFileName = "/home/liuexp/projects/nachos-framework/nachos-sjtu/conf/proj1.conf";
+	private static String configFileName = "/home/liuexp/projects/nachos-framework/nachos-sjtu/conf/proj2.conf";
 
 	private static final String help = "\n"
 			+ "Options:\n"
