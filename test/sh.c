@@ -266,7 +266,7 @@ void runline(char* line) {
             }
             int count = atoi(argv[2]);
 	    int i;
-	    for(i=0;i<14;i++)buf[i]='y';
+	    for (i=0;i<14;i++) buf[i]='y';
             if (write(fp, buf, count) < 0){
                 printf("write failed\n");
                 return;

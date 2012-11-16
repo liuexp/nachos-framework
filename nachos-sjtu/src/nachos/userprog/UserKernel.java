@@ -1,5 +1,6 @@
 package nachos.userprog;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 
 import nachos.machine.*;
@@ -24,6 +25,14 @@ public class UserKernel extends ThreadedKernel {
 		super.initialize(args);
 
 		console = new SynchConsole(Machine.console());
+		int pn = Machine.processor().getNumPhysPages();
+		phyTable = new Boolean [pn];
+		phyTableLock = new Lock [pn];
+		
+		for(int i=0;i<pn;i++){
+			phyTable[i]=false;
+			phyTableLock[i]=new Lock();
+		}
 
 		Machine.processor().setExceptionHandler(new Runnable() {
 			public void run() {
@@ -111,6 +120,9 @@ public class UserKernel extends ThreadedKernel {
 
 	/** Globally accessible reference to the synchronized console. */
 	public static SynchConsole console;
+	//public static ArrayList<Boolean> phyTable;
+	public static Boolean [] phyTable;
+	public static Lock [] phyTableLock;
 
 
 }

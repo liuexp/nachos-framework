@@ -143,14 +143,27 @@ public class UserProcess {
 
 		byte[] memory = Machine.processor().getMemory();
 
-		// for now, just assume that virtual addresses equal physical addresses
-		if (vaddr < 0 || vaddr >= memory.length)
-			return 0;
+		int curVpn = vaddr / Processor.pageSize;
+		int curOffset = offset;
+		int tot = 0;
+		int vOffset = vaddr % Processor.pageSize;
+		while(length > 0){
+			int ppn = pageTable[curVpn].valid? pageTable[curVpn].ppn : -1;
+			int paddr = ppn * Processor.pageSize + vOffset; 
+			int amount = Math.min(length, Processor.pageSize - vOffset);
+			if (paddr < 0 || paddr >= memory.length || amount < 0)break;
+			//FIXME: should we go on or quit as quick as possible?
 
-		int amount = Math.min(length, memory.length - vaddr);
-		System.arraycopy(memory, vaddr, data, offset, amount);
+			System.arraycopy(memory, paddr, data, curOffset, amount);
+			curOffset += amount;
+			
+			tot += amount;
+			curVpn++;
+			length -= amount;
+			vOffset = 0;
+		}
 
-		return amount;
+		return tot;
 	}
 
 	/**
@@ -191,14 +204,26 @@ public class UserProcess {
 
 		byte[] memory = Machine.processor().getMemory();
 
-		// for now, just assume that virtual addresses equal physical addresses
-		if (vaddr < 0 || vaddr >= memory.length)
-			return 0;
+		int curVpn = vaddr / Processor.pageSize;
+		int curOffset = offset;
+		int tot = 0;
+		int vOffset = vaddr % Processor.pageSize;
+		while(length > 0){
+			int ppn = pageTable[curVpn].valid && !pageTable[curVpn].readOnly? pageTable[curVpn].ppn : -1;
+			int paddr = ppn * Processor.pageSize + vOffset; 
+			int amount = Math.min(length, Processor.pageSize - vOffset);
+			if (paddr < 0 || paddr >= memory.length || amount < 0)break;
+			//FIXME: should we go on or quit as quick as possible?
 
-		int amount = Math.min(length, memory.length - vaddr);
-		System.arraycopy(data, offset, memory, vaddr, amount);
-
-		return amount;
+			System.arraycopy(data, curOffset, memory, paddr, amount);
+			curOffset += amount;
+			
+			tot += amount;
+			curVpn++;
+			length -= amount;
+			vOffset = 0;
+		}
+		return tot;
 	}
 
 	/**
@@ -217,8 +242,10 @@ public class UserProcess {
 		Lib.debug(dbgProcess, "UserProcess.load(\"" + name + "\")");
 
 		OpenFile executable = ThreadedKernel.fileSystem.open(name, false);
+		fdLock.acquire();
 		fileDescriptors.add(UserKernel.console.openForReading());
 		fileDescriptors.add(UserKernel.console.openForWriting());
+		fdLock.release();
 		if (executable == null) {
 			Lib.debug(dbgProcess, "\topen failed");
 			return false;
@@ -322,17 +349,47 @@ public class UserProcess {
 				int vpn = section.getFirstVPN() + i;
 
 				// for now, just assume virtual addresses=physical addresses
-				section.loadPage(i, vpn);
+				//section.loadPage(i, vpn);
+				int ppn = allocPage(vpn, section.isReadOnly());
+				
+				section.loadPage(i, ppn);
 			}
 		}
 
 		return true;
 	}
 
+	private int allocPage(int vpn, boolean readOnly) {
+		int ppn = -1;
+		int pn = Machine.processor().getNumPhysPages();
+		for(int i=0;i<pn;i++){
+			UserKernel.phyTableLock[i].acquire();
+			if(!UserKernel.phyTable[i]){
+				UserKernel.phyTable[i]=true;
+				ppn=i;
+				UserKernel.phyTableLock[i].release();
+				break;
+			}
+			UserKernel.phyTableLock[i].release();
+		}
+		//FIXME: how to handle exception like this?
+		if(ppn<0)handleException(Processor.exceptionBusError);
+		pageTable[vpn]=new TranslationEntry(vpn,ppn,true,readOnly,false,false);
+		return ppn;
+	}
+
 	/**
 	 * Release any resources allocated by <tt>loadSections()</tt>.
 	 */
 	protected void unloadSections() {
+		for (TranslationEntry e : pageTable){
+			if(e.valid){
+				UserKernel.phyTableLock[e.ppn].acquire();
+				UserKernel.phyTable[e.ppn] = false;
+				UserKernel.phyTableLock[e.ppn].release();
+				e.valid=false;
+			}
+		}
 	}
 
 	/**
@@ -476,14 +533,18 @@ public class UserProcess {
 	}
 
 	private int handleClose(int a0) {
+		fdLock.acquire();
 		fileDescriptors.get(a0).close();
 		fileDescriptors.set(a0, null);
+		fdLock.release();
 		return 0;
 	}
 
 	private int handleWrite(int a0, int a1, int a2) {
 		try{
+			fdLock.acquire();
 			OpenFile f = fileDescriptors.get(a0);
+			fdLock.release();
 			byte [] buf = new byte[a2];
 			readVirtualMemory(a1,buf);
 			return f.write(buf, 0, a2);
@@ -494,7 +555,9 @@ public class UserProcess {
 
 	private int handleRead(int a0, int a1, int a2) {
 		try{
+			fdLock.acquire();
 			OpenFile f = fileDescriptors.get(a0);
+			fdLock.release();
 			byte [] buf = new byte[a2];
 			int ret = f.read(buf, 0, a2);
 			return Math.min(ret, writeVirtualMemory(a1,buf));
@@ -506,8 +569,11 @@ public class UserProcess {
 	private int handleOpen(int a0) {
 		try{
 			String name = readVirtualMemoryString(a0,256);
+			fdLock.acquire();
 			fileDescriptors.add(UserKernel.fileSystem.open(name, false));
-			return fileDescriptors.size()-1;
+			int ret = fileDescriptors.size()-1;
+			fdLock.release();
+			return ret;
 		} catch (Exception e){
 			return -1;
 		}
@@ -516,8 +582,11 @@ public class UserProcess {
 	private int handleCreate(int a0) {
 		try{
 			String name = readVirtualMemoryString(a0,256);
+			fdLock.acquire();
 			fileDescriptors.add(UserKernel.fileSystem.open(name, true));
-			return fileDescriptors.size()-1;
+			int ret = fileDescriptors.size()-1;
+			fdLock.release();
+			return ret;
 		} catch (Exception e){
 			return -1;
 		}
@@ -585,4 +654,5 @@ public class UserProcess {
 	private static final int pageSize = Processor.pageSize;
 	private static final char dbgProcess = 'a';
 	public static ArrayList<OpenFile> fileDescriptors=new ArrayList<OpenFile>();
+	public static Lock fdLock=new Lock();
 }
