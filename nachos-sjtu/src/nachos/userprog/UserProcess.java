@@ -28,6 +28,9 @@ public class UserProcess {
 		UserKernel.pidCountLock.acquire();
 		pid = UserKernel.pidCount++;
 		UserKernel.pidCountLock.release();
+		UserKernel.processLock.acquire();
+		UserKernel.processTbl.add(this);
+		UserKernel.processLock.release();
 	}
 
 	/**
@@ -549,6 +552,7 @@ public class UserProcess {
 		UserKernel.fdLock.acquire();
 		OpenFile h =UserKernel.fileDescriptors.get(a0); 
 		if(h!=null)h.close();
+		h.getName();
 		UserKernel.fileDescriptors.set(a0, null);
 		UserKernel.fdLock.release();
 		return 0;
@@ -684,8 +688,12 @@ public class UserProcess {
 		for (Integer i: curfd){
 			handleClose(i);
 		}
-		if (pid == UserKernel.pidMain)	Machine.halt();
-		//FIXME: the last thread terminate the machine
+		
+		UserKernel.processLock.acquire();
+		UserKernel.processTbl.remove(this);
+		UserKernel.processLock.release();
+		if (UserKernel.processTbl.isEmpty()) Kernel.kernel.terminate();
+		//if (pid == UserKernel.pidMain)	Machine.halt();
 		UThread.finish();
 		return a0;
 	}
