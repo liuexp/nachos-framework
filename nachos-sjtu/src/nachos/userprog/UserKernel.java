@@ -1,9 +1,7 @@
 package nachos.userprog;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
 import nachos.machine.*;
@@ -42,7 +40,6 @@ public class UserKernel extends ThreadedKernel {
 		//fdLock.release();
 		pidCountLock = new Lock();
 		processLock = new Lock();
-		processTbl = new HashSet<UserProcess> ();
 		Machine.processor().setExceptionHandler(new Runnable() {
 			public void run() {
 				exceptionHandler();
@@ -138,5 +135,5 @@ public class UserKernel extends ThreadedKernel {
 	public static ArrayList<OpenFile> fileDescriptors=new ArrayList<OpenFile>();
 	public static Lock fdLock;
 	public static Lock processLock;
-	public static Set<UserProcess> processTbl;
+	public static int processCnt;
 }

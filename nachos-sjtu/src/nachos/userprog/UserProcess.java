@@ -28,9 +28,7 @@ public class UserProcess {
 		UserKernel.pidCountLock.acquire();
 		pid = UserKernel.pidCount++;
 		UserKernel.pidCountLock.release();
-		UserKernel.processLock.acquire();
-		UserKernel.processTbl.add(this);
-		UserKernel.processLock.release();
+		
 	}
 
 	/**
@@ -58,6 +56,9 @@ public class UserProcess {
 		if (!load(name, args))
 			return false;
 
+		UserKernel.processLock.acquire();
+		UserKernel.processCnt++;
+		UserKernel.processLock.release();
 		new UThread(this).setName(name).fork();
 
 		return true;
@@ -689,10 +690,11 @@ public class UserProcess {
 		}
 		
 		UserKernel.processLock.acquire();
-		UserKernel.processTbl.remove(this);
+		UserKernel.processCnt--;
 		UserKernel.processLock.release();
-		if (UserKernel.processTbl.isEmpty()) Kernel.kernel.terminate();
-		//if (pid == UserKernel.pidMain)	Machine.halt();
+		if (UserKernel.processCnt<=0) 
+			Kernel.kernel.terminate();
+		//if (pid == UserKernel.pidMain)Machine.halt();
 		UThread.finish();
 		return a0;
 	}
