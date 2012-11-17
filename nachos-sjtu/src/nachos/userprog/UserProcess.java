@@ -536,7 +536,6 @@ public class UserProcess {
 	}
 
 	private int handleUnlink(int a0) {
-		//FIXME: lock for any other opened handlers.
 		try {
 			String name = readVirtualMemoryString(a0,256);
 			if (ThreadedKernel.fileSystem.remove(name)){

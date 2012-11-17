@@ -43,10 +43,6 @@ public class UserKernel extends ThreadedKernel {
 		pidCountLock = new Lock();
 		processLock = new Lock();
 		processTbl = new HashSet<UserProcess> ();
-		fdnumLock = new HashMap<String, Lock> ();
-		fdnumaddLock = new HashMap<String, Lock> ();
-		fdnum = new HashMap<String, Integer> ();
-		
 		Machine.processor().setExceptionHandler(new Runnable() {
 			public void run() {
 				exceptionHandler();
@@ -143,16 +139,4 @@ public class UserKernel extends ThreadedKernel {
 	public static Lock fdLock;
 	public static Lock processLock;
 	public static Set<UserProcess> processTbl;
-	public static Map<String, Integer> fdnum;	
-	public static Map<String, Lock> fdnumLock;
-	public static Map<String, Lock> fdnumaddLock;
-	// upon open, acquire pendingRm lock, check if there's any pending remove. if yes then acquire pendingOpen lock, and add itself to pendingOpen
-	// upon close, acquire fdnumLock, decrement it, check if this is the last one, if yes then acquire pendingRm lock, check if ispendingRm, if yes then wake it up.
-	// upon unlink, 
-	public static Map <String, Boolean> ispendingRm;
-	public static Map <String, Condition> pendingRm;
-	public static Map <String, Lock> pendingRmLock;
-	//public static Map <String, Integer> pendingRmCnt;
-	public static Map <String, Condition> pendingOpen;
-	public static Map <String, Lock> pendingOpenLock;
 }
