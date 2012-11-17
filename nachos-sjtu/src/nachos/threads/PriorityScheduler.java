@@ -270,6 +270,7 @@ public class PriorityScheduler extends Scheduler {
 			this.thread = thread;
 
 			setPriority(priorityDefault);
+			effectivePriority = priorityDefault;
 		}
 
 		/**

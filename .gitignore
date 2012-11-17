@@ -4,3 +4,5 @@ bin/
 *.coff
 *.o
 *.zip
+test/conf/
+*.jar

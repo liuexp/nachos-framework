@@ -1,8 +1,6 @@
 package nachos.threads;
 
 import nachos.machine.Lib;
-import nachos.threads.PriorityScheduler.PriorityQueue;
-import nachos.threads.PriorityScheduler.ThreadState;
 
 /**
  * A scheduler that chooses threads using a lottery.
@@ -40,17 +38,21 @@ public class LotteryScheduler extends PriorityScheduler {
 	 * @return a new lottery thread queue.
 	 */
 	public ThreadQueue newThreadQueue(boolean transferPriority) {
-		// implement me
-		return null;
+		return new LotteryQueue(transferPriority);
 	}
+	
+	public static final int priorityMaximum = Integer.MAX_VALUE;
+	public static final int priorityMinimum = 1;
+	
 	public static void updatePriority(ThreadState cur) {
 		//Lib.assertTrue(Machine.interrupt().disabled());
 		while(cur != null){
 			int p = cur.priority;
 			for (PriorityQueue t  : cur.owningQueue){
 				if (!t.transferPriority || t.waitQueue.isEmpty())continue;
-				int tmp = t.waitQueue.first().effectivePriority;
-				p = tmp > p ? tmp : p;
+				for (ThreadState s : t.waitQueue){
+					p += s.effectivePriority;
+				}
 			}
 			if(p == cur.effectivePriority)return;
 			else if(cur.waitingFor == null){
@@ -66,5 +68,27 @@ public class LotteryScheduler extends PriorityScheduler {
 				else return;
 			}
 		}
+	}
+	
+	protected class LotteryQueue extends PriorityQueue{
+		public LotteryQueue(boolean transferPriority){
+			super(transferPriority);
+		}
+		public ThreadState pickNextThread(){
+			int cnt = 1;
+			for (ThreadState t:waitQueue) cnt += t.effectivePriority;
+			int ticket = Lib.random(cnt);
+			cnt = 1;
+			for (ThreadState t:waitQueue){
+				cnt+=t.effectivePriority;
+				if(cnt>=ticket) {
+					//System.out.println("picked "+ t.thread.toString());
+					return t;
+					
+				}
+			}
+			return null;
+		}
+		
 	}
 }

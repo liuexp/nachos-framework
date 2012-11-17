@@ -5,7 +5,8 @@ import nachos.threads.*;
 
 import java.io.EOFException;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Encapsulates the state of a user process that is not contained in its user
@@ -321,6 +322,7 @@ public class UserProcess {
 							new byte[] { 0 }) == 1);
 			stringOffset += 1;
 		}
+		executable.close();
 
 		return true;
 	}
@@ -366,14 +368,14 @@ public class UserProcess {
 		int pn = Machine.processor().getNumPhysPages();
 		
 		for(int i=0;i<pn;i++){
-			UserKernel.phyTableLock[i].acquire();
+			UserKernel.phyTableLock.acquire();
 			if(!UserKernel.phyTable[i]){
 				UserKernel.phyTable[i]=true;
 				ppn=i;
-				UserKernel.phyTableLock[i].release();
+				UserKernel.phyTableLock.release();
 				break;
 			}
-			UserKernel.phyTableLock[i].release();
+			UserKernel.phyTableLock.release();
 		}
 		//FIXME: how to handle exception like this?
 		if(ppn<0)handleException(Processor.exceptionBusError);
@@ -387,9 +389,9 @@ public class UserProcess {
 	protected void unloadSections() {
 		for (TranslationEntry e : pageTable){
 			if(e.valid){
-				UserKernel.phyTableLock[e.ppn].acquire();
+				UserKernel.phyTableLock.acquire();
 				UserKernel.phyTable[e.ppn] = false;
-				UserKernel.phyTableLock[e.ppn].release();
+				UserKernel.phyTableLock.release();
 				e.valid=false;
 			}
 		}
@@ -525,9 +527,9 @@ public class UserProcess {
 
 		default:
 			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
-			Lib.assertNotReached("Unknown system call!");
+			//Lib.assertNotReached("Unknown system call!");
+			return 0;
 		}
-		return 0;
 	}
 
 	private int handleUnlink(int a0) {
@@ -582,6 +584,7 @@ public class UserProcess {
 		try{
 			String name = readVirtualMemoryString(a0,256);
 			OpenFile h = UserKernel.fileSystem.open(name, false);
+			if(h == null) return -1;
 			UserKernel.fdLock.acquire();
 			UserKernel.fileDescriptors.add(h);
 			int ret = UserKernel.fileDescriptors.size()-1;
@@ -597,6 +600,7 @@ public class UserProcess {
 		try{
 			String name = readVirtualMemoryString(a0,256);
 			OpenFile h = UserKernel.fileSystem.open(name, true);
+			if(h == null) return -1;
 			UserKernel.fdLock.acquire();
 			UserKernel.fileDescriptors.add(h);
 			int ret = UserKernel.fileDescriptors.size()-1;
@@ -609,8 +613,26 @@ public class UserProcess {
 	}
 
 	private int handleJoin(int a0, int a1) {
-		// TODO Auto-generated method stub
-		return 0;
+		childrenLock.acquire();
+		UserProcess c = children.get(a0);
+		if(childrenStatus.containsKey(a0)) return childrenStatus.get(a0);
+		Integer ret = -1;
+		if(c != null){
+			toBeJoined = c;
+			children.remove(c);
+			//here automatically releases childrenLock
+			childrenDead.sleep();
+			ret = childrenStatus.get(a0);
+			if(ret!=null){
+				if(writeVirtualMemory(a1,Lib.bytesFromInt(ret)) == intByteSize){
+					ret = ret.equals(-1)? 0 :1;
+				}
+			}else{
+				ret = 1;
+			}
+		}
+		childrenLock.release();
+		return ret;
 	}
 
 	private int handleExec(int a0, int a1, int a2) {
@@ -627,8 +649,18 @@ public class UserProcess {
 				int addr = Lib.bytesToInt(buf, 0);
 				args[i] = readVirtualMemoryString(addr,256);
 			}
+			c.parent = this;
+			childrenLock.acquire();
+			children.put(c.pid, c);
+			childrenLock.release();
 			boolean ret = c.execute(name, args);
-			return ret?c.pid:-1;
+			if(!ret){
+				childrenLock.acquire();
+				children.remove(c.pid);
+				childrenLock.release();
+				return -1;
+			}
+			return c.pid;
 		} catch (Exception e){
 			e.printStackTrace();
 			return -1;
@@ -636,11 +668,24 @@ public class UserProcess {
 	}
 
 	private int handleExit(int a0) {
+		for (UserProcess c : children.values()){
+			c.parent = null;
+		}
+		if(parent!=null){
+			parent.childrenLock.acquire();
+			parent.childrenStatus.put(pid, a0);
+			if(parent.toBeJoined == this){
+				parent.toBeJoined = null;
+				parent.childrenDead.wake();
+			}
+			parent.childrenLock.release();
+		}
 		unloadSections();
 		for (Integer i: curfd){
 			handleClose(i);
 		}
 		if (pid == UserKernel.pidMain)	Machine.halt();
+		//FIXME: the last thread terminate the machine
 		UThread.finish();
 		return a0;
 	}
@@ -666,11 +711,21 @@ public class UserProcess {
 			processor.writeRegister(Processor.regV0, result);
 			processor.advancePC();
 			break;
-
+		case Processor.exceptionAddressError:
+		case Processor.exceptionBusError:
+		case Processor.exceptionIllegalInstruction:
+		case Processor.exceptionOverflow:
+		case Processor.exceptionPageFault:
+		case Processor.exceptionReadOnly:
+		case Processor.exceptionTLBMiss:
+			Lib.debug(dbgProcess, "SIGKILL exception: "
+					+ Processor.exceptionNames[cause]);
+			handleExit(1);
+			break;
 		default:
 			Lib.debug(dbgProcess, "Unexpected exception: "
 					+ Processor.exceptionNames[cause]);
-			Lib.assertNotReached("Unexpected exception");
+			//Lib.assertNotReached("Unexpected exception");
 		}
 	}
 
@@ -693,6 +748,12 @@ public class UserProcess {
 	private static final int intByteSize = 4;
 	
 	public ArrayList<Integer> curfd = new ArrayList<Integer> ();
+	public UserProcess toBeJoined;
+	public UserProcess parent;
+	public Lock childrenLock = new Lock();
+	public Condition childrenDead = new Condition(childrenLock);
+	public Map<Integer, UserProcess> children = new HashMap<Integer, UserProcess>();
+	public Map<Integer, Integer> childrenStatus = new HashMap<Integer, Integer>();
 	
 	public int pid;
 	

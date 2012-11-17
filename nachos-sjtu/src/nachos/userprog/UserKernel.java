@@ -26,11 +26,10 @@ public class UserKernel extends ThreadedKernel {
 		console = new SynchConsole(Machine.console());
 		int pn = Machine.processor().getNumPhysPages();
 		phyTable = new Boolean [pn];
-		phyTableLock = new Lock [pn];
+		phyTableLock = new Lock();
 		
 		for(int i=0;i<pn;i++){
 			phyTable[i]=false;
-			phyTableLock[i]=new Lock();
 		}
 		fdLock = new Lock();
 		//fdLock.acquire();
@@ -49,8 +48,7 @@ public class UserKernel extends ThreadedKernel {
 	 * Test the console device.
 	 */
 	public void selfTest() {
-		super.selfTest();
-
+//		super.selfTest();
 //		System.out.println("Testing the console device. Typed characters");
 //		System.out.println("will be echoed until q is typed.");
 //
@@ -126,8 +124,8 @@ public class UserKernel extends ThreadedKernel {
 	/** Globally accessible reference to the synchronized console. */
 	public static SynchConsole console;
 	//public static ArrayList<Boolean> phyTable;
-	public static Boolean [] phyTable;
-	public static Lock [] phyTableLock;
+	public static Boolean [] phyTable;//FIXME: only a linkedlist of free memory entries is enough
+	public static Lock phyTableLock;
 	public static int pidMain;
 	public static int pidCount = 1;
 	public static Lock pidCountLock;
