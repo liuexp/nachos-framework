@@ -24,10 +24,9 @@ public class UserProcess {
 	 * Allocate a new process.
 	 */
 	public UserProcess() {
-		int numPhysPages = Machine.processor().getNumPhysPages();
-		pageTable = new TranslationEntry[numPhysPages];
-		for (int i = 0; i < numPhysPages; i++)
-			pageTable[i] = new TranslationEntry(i, i, true, false, false, false);
+		UserKernel.pidCountLock.acquire();
+		pid = UserKernel.pidCount++;
+		UserKernel.pidCountLock.release();
 	}
 
 	/**
@@ -143,14 +142,14 @@ public class UserProcess {
 
 		byte[] memory = Machine.processor().getMemory();
 
-		int curVpn = vaddr / Processor.pageSize;
+		int curVpn = vaddr / pageSize;
 		int curOffset = offset;
 		int tot = 0;
-		int vOffset = vaddr % Processor.pageSize;
+		int vOffset = vaddr % pageSize;
 		while(length > 0){
 			int ppn = pageTable[curVpn].valid? pageTable[curVpn].ppn : -1;
-			int paddr = ppn * Processor.pageSize + vOffset; 
-			int amount = Math.min(length, Processor.pageSize - vOffset);
+			int paddr = ppn * pageSize + vOffset; 
+			int amount = Math.min(length, pageSize - vOffset);
 			if (paddr < 0 || paddr >= memory.length || amount < 0)break;
 			//FIXME: should we go on or quit as quick as possible?
 
@@ -204,14 +203,14 @@ public class UserProcess {
 
 		byte[] memory = Machine.processor().getMemory();
 
-		int curVpn = vaddr / Processor.pageSize;
+		int curVpn = vaddr / pageSize;
 		int curOffset = offset;
 		int tot = 0;
-		int vOffset = vaddr % Processor.pageSize;
+		int vOffset = vaddr % pageSize;
 		while(length > 0){
 			int ppn = pageTable[curVpn].valid && !pageTable[curVpn].readOnly? pageTable[curVpn].ppn : -1;
-			int paddr = ppn * Processor.pageSize + vOffset; 
-			int amount = Math.min(length, Processor.pageSize - vOffset);
+			int paddr = ppn * pageSize + vOffset; 
+			int amount = Math.min(length, pageSize - vOffset);
 			if (paddr < 0 || paddr >= memory.length || amount < 0)break;
 			//FIXME: should we go on or quit as quick as possible?
 
@@ -242,10 +241,7 @@ public class UserProcess {
 		Lib.debug(dbgProcess, "UserProcess.load(\"" + name + "\")");
 
 		OpenFile executable = ThreadedKernel.fileSystem.open(name, false);
-		fdLock.acquire();
-		fileDescriptors.add(UserKernel.console.openForReading());
-		fileDescriptors.add(UserKernel.console.openForWriting());
-		fdLock.release();
+		
 		if (executable == null) {
 			Lib.debug(dbgProcess, "\topen failed");
 			return false;
@@ -296,6 +292,11 @@ public class UserProcess {
 		// and finally reserve 1 page for arguments
 		numPages++;
 
+		pageTable = new TranslationEntry[numPages];
+		for (int i = 0; i < numPages; i++)
+			allocPage(i);
+			//pageTable[i] = new TranslationEntry(i, i, false, false, false, false);
+		
 		if (!loadSections())
 			return false;
 
@@ -350,7 +351,8 @@ public class UserProcess {
 
 				// for now, just assume virtual addresses=physical addresses
 				//section.loadPage(i, vpn);
-				int ppn = allocPage(vpn, section.isReadOnly());
+				int ppn = pageTable[vpn].ppn;//allocPage(vpn, section.isReadOnly());
+				pageTable[vpn].readOnly = section.isReadOnly();
 				
 				section.loadPage(i, ppn);
 			}
@@ -359,9 +361,10 @@ public class UserProcess {
 		return true;
 	}
 
-	private int allocPage(int vpn, boolean readOnly) {
+	private int allocPage(int vpn) {
 		int ppn = -1;
 		int pn = Machine.processor().getNumPhysPages();
+		
 		for(int i=0;i<pn;i++){
 			UserKernel.phyTableLock[i].acquire();
 			if(!UserKernel.phyTable[i]){
@@ -374,7 +377,7 @@ public class UserProcess {
 		}
 		//FIXME: how to handle exception like this?
 		if(ppn<0)handleException(Processor.exceptionBusError);
-		pageTable[vpn]=new TranslationEntry(vpn,ppn,true,readOnly,false,false);
+		pageTable[vpn]=new TranslationEntry(vpn,ppn,true,false,false,false);
 		return ppn;
 	}
 
@@ -419,10 +422,10 @@ public class UserProcess {
 	 * Handle the halt() system call.
 	 */
 	private int handleHalt() {
-
-		Machine.halt();
-
-		Lib.assertNotReached("Machine.halt() did not halt machine!");
+		if(pid == UserKernel.pidMain){
+			Machine.halt();
+			Lib.assertNotReached("Machine.halt() did not halt machine!");
+		}
 		return 0;
 	}
 
@@ -505,8 +508,8 @@ public class UserProcess {
 			return handleExit(a0);
 		case syscallExec:
 			return handleExec(a0,a1,a2);
-//		case syscallJoin:
-//			return handleJoin(a0,a1);
+		case syscallJoin:
+			return handleJoin(a0,a1);
 		case syscallCreate: 
 			return handleCreate(a0);
 		case syscallOpen:
@@ -517,8 +520,8 @@ public class UserProcess {
 			return handleWrite(a0,a1,a2);
 		case syscallClose:
 			return handleClose(a0);
-//		case syscallUnlink:
-//			return handleUnlink(a0);
+		case syscallUnlink:
+			return handleUnlink(a0);
 
 		default:
 			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
@@ -528,23 +531,32 @@ public class UserProcess {
 	}
 
 	private int handleUnlink(int a0) {
-		// TODO Auto-generated method stub
-		return 0;
+		//FIXME: lock for any other opened handlers.
+		try {
+			String name = readVirtualMemoryString(a0,256);
+			if (ThreadedKernel.fileSystem.remove(name)){
+				return 0;
+			}else
+				return -1;
+		} catch (Exception e){
+			return -1;
+		}
 	}
 
 	private int handleClose(int a0) {
-		fdLock.acquire();
-		fileDescriptors.get(a0).close();
-		fileDescriptors.set(a0, null);
-		fdLock.release();
+		UserKernel.fdLock.acquire();
+		OpenFile h =UserKernel.fileDescriptors.get(a0); 
+		if(h!=null)h.close();
+		UserKernel.fileDescriptors.set(a0, null);
+		UserKernel.fdLock.release();
 		return 0;
 	}
 
 	private int handleWrite(int a0, int a1, int a2) {
 		try{
-			fdLock.acquire();
-			OpenFile f = fileDescriptors.get(a0);
-			fdLock.release();
+			UserKernel.fdLock.acquire();
+			OpenFile f = UserKernel.fileDescriptors.get(a0);
+			UserKernel.fdLock.release();
 			byte [] buf = new byte[a2];
 			readVirtualMemory(a1,buf);
 			return f.write(buf, 0, a2);
@@ -555,9 +567,9 @@ public class UserProcess {
 
 	private int handleRead(int a0, int a1, int a2) {
 		try{
-			fdLock.acquire();
-			OpenFile f = fileDescriptors.get(a0);
-			fdLock.release();
+			UserKernel.fdLock.acquire();
+			OpenFile f = UserKernel.fileDescriptors.get(a0);
+			UserKernel.fdLock.release();
 			byte [] buf = new byte[a2];
 			int ret = f.read(buf, 0, a2);
 			return Math.min(ret, writeVirtualMemory(a1,buf));
@@ -569,10 +581,12 @@ public class UserProcess {
 	private int handleOpen(int a0) {
 		try{
 			String name = readVirtualMemoryString(a0,256);
-			fdLock.acquire();
-			fileDescriptors.add(UserKernel.fileSystem.open(name, false));
-			int ret = fileDescriptors.size()-1;
-			fdLock.release();
+			OpenFile h = UserKernel.fileSystem.open(name, false);
+			UserKernel.fdLock.acquire();
+			UserKernel.fileDescriptors.add(h);
+			int ret = UserKernel.fileDescriptors.size()-1;
+			UserKernel.fdLock.release();
+			curfd.add(ret);
 			return ret;
 		} catch (Exception e){
 			return -1;
@@ -582,10 +596,12 @@ public class UserProcess {
 	private int handleCreate(int a0) {
 		try{
 			String name = readVirtualMemoryString(a0,256);
-			fdLock.acquire();
-			fileDescriptors.add(UserKernel.fileSystem.open(name, true));
-			int ret = fileDescriptors.size()-1;
-			fdLock.release();
+			OpenFile h = UserKernel.fileSystem.open(name, true);
+			UserKernel.fdLock.acquire();
+			UserKernel.fileDescriptors.add(h);
+			int ret = UserKernel.fileDescriptors.size()-1;
+			UserKernel.fdLock.release();
+			curfd.add(ret);
 			return ret;
 		} catch (Exception e){
 			return -1;
@@ -598,14 +614,35 @@ public class UserProcess {
 	}
 
 	private int handleExec(int a0, int a1, int a2) {
-		// TODO Auto-generated method stub
-		return 0;
+		try{
+			String name = readVirtualMemoryString(a0,256);
+			if(!name.endsWith("coff"))return -1;
+			UserProcess c = newUserProcess();
+			String [] args = new String[a1];
+			for(int i=0;i<a1;i++){
+				byte [] buf = new byte [intByteSize];
+				if(readVirtualMemory(a2 + i*intByteSize, buf) != buf.length){
+					return -1;
+				}
+				int addr = Lib.bytesToInt(buf, 0);
+				args[i] = readVirtualMemoryString(addr,256);
+			}
+			boolean ret = c.execute(name, args);
+			return ret?c.pid:-1;
+		} catch (Exception e){
+			e.printStackTrace();
+			return -1;
+		}
 	}
 
 	private int handleExit(int a0) {
-		//FIXME: how to transfer exit status
-		Machine.halt();
-		return 0;
+		unloadSections();
+		for (Integer i: curfd){
+			handleClose(i);
+		}
+		if (pid == UserKernel.pidMain)	Machine.halt();
+		UThread.finish();
+		return a0;
 	}
 
 	/**
@@ -653,6 +690,10 @@ public class UserProcess {
 
 	private static final int pageSize = Processor.pageSize;
 	private static final char dbgProcess = 'a';
-	public static ArrayList<OpenFile> fileDescriptors=new ArrayList<OpenFile>();
-	public static Lock fdLock=new Lock();
+	private static final int intByteSize = 4;
+	
+	public ArrayList<Integer> curfd = new ArrayList<Integer> ();
+	
+	public int pid;
+	
 }

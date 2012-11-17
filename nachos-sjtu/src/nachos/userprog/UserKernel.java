@@ -1,7 +1,6 @@
 package nachos.userprog;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 
 import nachos.machine.*;
 import nachos.threads.*;
@@ -33,7 +32,12 @@ public class UserKernel extends ThreadedKernel {
 			phyTable[i]=false;
 			phyTableLock[i]=new Lock();
 		}
-
+		fdLock = new Lock();
+		//fdLock.acquire();
+		fileDescriptors.add(UserKernel.console.openForReading());
+		fileDescriptors.add(UserKernel.console.openForWriting());
+		//fdLock.release();
+		pidCountLock = new Lock();
 		Machine.processor().setExceptionHandler(new Runnable() {
 			public void run() {
 				exceptionHandler();
@@ -47,17 +51,17 @@ public class UserKernel extends ThreadedKernel {
 	public void selfTest() {
 		super.selfTest();
 
-		System.out.println("Testing the console device. Typed characters");
-		System.out.println("will be echoed until q is typed.");
-
-		char c;
-
-		do {
-			c = (char) console.readByte(true);
-			console.writeByte(c);
-		} while (c != 'q');
-
-		System.out.println("");
+//		System.out.println("Testing the console device. Typed characters");
+//		System.out.println("will be echoed until q is typed.");
+//
+//		char c;
+//
+//		do {
+//			c = (char) console.readByte(true);
+//			console.writeByte(c);
+//		} while (c != 'q');
+//
+//		System.out.println("");
 	}
 
 	/**
@@ -106,6 +110,7 @@ public class UserKernel extends ThreadedKernel {
 		UserProcess process = UserProcess.newUserProcess();
 
 		String shellProgram = Machine.getShellProgramName();
+		pidMain = process.pid;
 		Lib.assertTrue(process.execute(shellProgram, new String[] {}));
 
 		KThread.finish();
@@ -123,6 +128,9 @@ public class UserKernel extends ThreadedKernel {
 	//public static ArrayList<Boolean> phyTable;
 	public static Boolean [] phyTable;
 	public static Lock [] phyTableLock;
-
-
+	public static int pidMain;
+	public static int pidCount = 1;
+	public static Lock pidCountLock;
+	public static ArrayList<OpenFile> fileDescriptors=new ArrayList<OpenFile>();
+	public static Lock fdLock;
 }

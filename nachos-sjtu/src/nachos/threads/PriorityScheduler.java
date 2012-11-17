@@ -2,13 +2,11 @@ package nachos.threads;
 
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Set;
 import java.util.TreeSet;
 
 import nachos.machine.Lib;
 import nachos.machine.Machine;
-import nachos.threads.PriorityScheduler.ThreadState;
 
 /**
  * A scheduler that chooses threads based on their priorities.
@@ -208,12 +206,12 @@ public class PriorityScheduler extends Scheduler {
 		public void print() {
 			Lib.assertTrue(Machine.interrupt().disabled());
 			System.out.println("==========Scheduling Queue Dumps===========");
-			int a=0;
-			long b=0;
-			if (!waitQueue.isEmpty()){
-				a=waitQueue.first().effectivePriority;
-				b=waitQueue.first().arriveTime;
-			}
+//			int a=0;
+//			long b=0;
+//			if (!waitQueue.isEmpty()){
+//				a=waitQueue.first().effectivePriority;
+//				b=waitQueue.first().arriveTime;
+//			}
 			for (ThreadState t: waitQueue){
 				System.out.println(t.thread.getName()+":\t"+
 						t.getEffectivePriority()+", "+
@@ -221,10 +219,10 @@ public class PriorityScheduler extends Scheduler {
 						t.arriveTime+","+
 						t.thread.getState()+","
 			);
-				//Lib.assertTrue(a>t.getEffectivePriority()||(
-				//		a==t.getEffectivePriority()&&b<=t.arriveTime));
-				a=t.getEffectivePriority();
-				b=t.arriveTime;
+//				Lib.assertTrue(a>t.getEffectivePriority()||(
+//						a==t.getEffectivePriority()&&b<=t.arriveTime));
+//				a=t.getEffectivePriority();
+//				b=t.arriveTime;
 			}
 		}
 
