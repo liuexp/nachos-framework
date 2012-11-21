@@ -147,6 +147,7 @@ public class UserProcess {
 
 		byte[] memory = Machine.processor().getMemory();
 
+		if(vaddr < 0)handleException(Processor.exceptionAddressError);
 		int curVpn = vaddr / pageSize;
 		int curOffset = offset;
 		int tot = 0;
@@ -207,7 +208,8 @@ public class UserProcess {
 				&& offset + length <= data.length);
 
 		byte[] memory = Machine.processor().getMemory();
-
+		
+		if(vaddr < 0)handleException(Processor.exceptionAddressError);
 		int curVpn = vaddr / pageSize;
 		int curOffset = offset;
 		int tot = 0;
@@ -531,11 +533,13 @@ public class UserProcess {
 
 		default:
 			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
+			unHandledException = true;
 			//Lib.assertNotReached("Unknown system call!");
-			return 0;
+			return -1;
 		}
 	}
 
+	//FIXME: implement file locking?
 	private int handleUnlink(int a0) {
 		try {
 			String name = readVirtualMemoryString(a0,256);
@@ -549,12 +553,18 @@ public class UserProcess {
 	}
 
 	private int handleClose(int a0) {
-		UserKernel.fdLock.acquire();
-		OpenFile h =UserKernel.fileDescriptors.get(a0); 
-		if(h!=null)h.close();
-		h.getName();
-		UserKernel.fileDescriptors.set(a0, null);
-		UserKernel.fdLock.release();
+		try{
+			UserKernel.fdLock.acquire();
+			OpenFile h =UserKernel.fileDescriptors.get(a0); 
+			if(h!=null)h.close();
+			h.getName();
+			UserKernel.fileDescriptors.set(a0, null);
+		} catch(Exception e){
+			return -1;
+		} finally{
+			if(UserKernel.fdLock.isHeldByCurrentThread())
+				UserKernel.fdLock.release();
+		}
 		return 0;
 	}
 
@@ -568,7 +578,10 @@ public class UserProcess {
 			return f.write(buf, 0, a2);
 		} catch (Exception e){
 			return -1;
-		}		
+		} finally{
+			if(UserKernel.fdLock.isHeldByCurrentThread())
+				UserKernel.fdLock.release();
+		}
 	}
 
 	private int handleRead(int a0, int a1, int a2) {
@@ -581,6 +594,9 @@ public class UserProcess {
 			return Math.min(ret, writeVirtualMemory(a1,buf));
 		} catch (Exception e){
 			return -1;
+		} finally {
+			if(UserKernel.fdLock.isHeldByCurrentThread())
+				UserKernel.fdLock.release();
 		}
 	}
 
@@ -597,6 +613,9 @@ public class UserProcess {
 			return ret;
 		} catch (Exception e){
 			return -1;
+		} finally{
+			if(UserKernel.fdLock.isHeldByCurrentThread())
+				UserKernel.fdLock.release();
 		}
 	}
 
@@ -613,28 +632,35 @@ public class UserProcess {
 			return ret;
 		} catch (Exception e){
 			return -1;
+		} finally{
+			if(UserKernel.fdLock.isHeldByCurrentThread())
+				UserKernel.fdLock.release();
 		}
 	}
 
 	private int handleJoin(int a0, int a1) {
 		childrenLock.acquire();
 		UserProcess c = children.get(a0);
-		if(childrenStatus.containsKey(a0)) return childrenStatus.get(a0);
 		Integer ret = -1;
+		Integer status = childrenStatus.get(a0);
 		if(c != null){
-			toBeJoined = c;
-			children.remove(c);
-			//here automatically releases childrenLock
-			childrenDead.sleep();
-			ret = childrenStatus.get(a0);
-			if(ret!=null){
-				if(writeVirtualMemory(a1,Lib.bytesFromInt(ret)) == intByteSize){
-					ret = ret.equals(-1)? 0 :1;
-				}
+			if(status == null){
+				toBeJoined = c;
+				children.remove(c);
+				//here automatically releases childrenLock
+				childrenDead.sleep();
+				status = childrenStatus.get(a0);
+			}
+			if(status!=null){
+				if(writeVirtualMemory(a1,Lib.bytesFromInt(status)) == intByteSize){
+					ret = status.equals(-1)?0:1;
+				}else 
+					ret = 0;
 			}else{
-				ret = 1;
+				ret = 0;
 			}
 		}
+		toBeJoined = null;
 		childrenLock.release();
 		return ret;
 	}
@@ -666,8 +692,11 @@ public class UserProcess {
 			}
 			return c.pid;
 		} catch (Exception e){
-			e.printStackTrace();
+			//e.printStackTrace();
 			return -1;
+		} finally {
+			if(childrenLock.isHeldByCurrentThread())
+				childrenLock.release();
 		}
 	}
 
@@ -677,7 +706,8 @@ public class UserProcess {
 		}
 		if(parent!=null){
 			parent.childrenLock.acquire();
-			parent.childrenStatus.put(pid, a0);
+			if(!unHandledException)
+				parent.childrenStatus.put(pid, a0);
 			if(parent.toBeJoined == this){
 				parent.toBeJoined = null;
 				parent.childrenDead.wake();
@@ -729,11 +759,12 @@ public class UserProcess {
 		case Processor.exceptionTLBMiss:
 			Lib.debug(dbgProcess, "SIGKILL exception: "
 					+ Processor.exceptionNames[cause]);
-			handleExit(1);
+			handleExit(-1);
 			break;
 		default:
 			Lib.debug(dbgProcess, "Unexpected exception: "
 					+ Processor.exceptionNames[cause]);
+			unHandledException = true;
 			//Lib.assertNotReached("Unexpected exception");
 		}
 	}
@@ -763,6 +794,7 @@ public class UserProcess {
 	public Condition childrenDead = new Condition(childrenLock);
 	public Map<Integer, UserProcess> children = new HashMap<Integer, UserProcess>();
 	public Map<Integer, Integer> childrenStatus = new HashMap<Integer, Integer>();
+	public boolean unHandledException = false;
 	
 	public int pid;
 	

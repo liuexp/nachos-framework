@@ -33,7 +33,7 @@ NLIB = libnachos.a
 
 LIB_SOURCE = $(patsubst %,%.c,$(LIB)) $(STDLIB_C)
 
-TARGETS = halt sh matmult sort echo cat cp mv rm matmult_syn
+TARGETS = halt sh matmult sort echo cat cp mv rm grader_user1.c
 
 .SECONDARY: $(patsubst %.c,%.o,$(wildcard *.c))
 

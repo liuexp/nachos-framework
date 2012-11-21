@@ -1,8 +1,6 @@
 package nachos.userprog;
 
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Set;
 
 import nachos.machine.*;
 import nachos.threads.*;
