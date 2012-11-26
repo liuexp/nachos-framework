@@ -1,7 +1,9 @@
 package nachos.vm;
 
+import nachos.machine.Lib;
 import nachos.machine.Machine;
 import nachos.machine.Processor;
+import nachos.machine.TranslationEntry;
 import nachos.userprog.UserProcess;
 
 /**
@@ -20,7 +22,11 @@ public class VMProcess extends UserProcess {
 	 * Called by <tt>UThread.saveState()</tt>.
 	 */
 	public void saveState() {
-		super.saveState();
+		Processor p = Machine.processor();
+		for(int i=0;i<p.getTLBSize();i++){
+			myTLB[i] = p.readTLBEntry(i);
+			p.writeTLBEntry(i, new TranslationEntry());
+		}
 	}
 
 	/**
@@ -28,7 +34,11 @@ public class VMProcess extends UserProcess {
 	 * <tt>UThread.restoreState()</tt>.
 	 */
 	public void restoreState() {
-		super.restoreState();
+		Processor p = Machine.processor();
+		for(int i=0;i<p.getTLBSize();i++){
+			if(myTLB[i]==null)continue;
+			p.writeTLBEntry(i, myTLB[i]);
+		}
 	}
 
 	/**
@@ -38,6 +48,7 @@ public class VMProcess extends UserProcess {
 	 * @return <tt>true</tt> if successful.
 	 */
 	protected boolean loadSections() {
+		//delay loading executables, just setup specific entries, note that changes should be written to swap rather than executables
 		return super.loadSections();
 	}
 
@@ -60,6 +71,25 @@ public class VMProcess extends UserProcess {
 		Processor processor = Machine.processor();
 
 		switch (cause) {
+		case Processor.exceptionTLBMiss:
+			int vaddr = processor.readRegister(Processor.regBadVAddr);
+			int vpn = Processor.pageFromAddress(vaddr);
+			int idx = Lib.random(processor.getTLBSize());
+			for (int i=0;i<processor.getTLBSize();i++){
+				if(!processor.readTLBEntry(i).valid){
+					idx = i;
+					break;
+				}
+			}
+			TranslationEntry oldEntry = processor.readTLBEntry(idx);
+			if(oldEntry.valid){
+				pageTable[oldEntry.vpn].dirty |= oldEntry.dirty;
+				pageTable[oldEntry.vpn].used|= oldEntry.used;
+			}
+			//FIXME: use a single global pageTable
+			if(vpn<0 || vpn >= pageTable.length)handleException(Processor.exceptionBusError);
+			processor.writeTLBEntry(idx, pageTable[vpn]);
+			break;
 		default:
 			super.handleException(cause);
 			break;
@@ -69,4 +99,5 @@ public class VMProcess extends UserProcess {
 	private static final int pageSize = Processor.pageSize;
 	private static final char dbgProcess = 'a';
 	private static final char dbgVM = 'v';
+	private TranslationEntry [] myTLB = new TranslationEntry[Machine.processor().getTLBSize()];
 }

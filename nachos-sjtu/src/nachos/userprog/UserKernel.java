@@ -32,10 +32,8 @@ public class UserKernel extends ThreadedKernel {
 			phyTable[i]=false;
 		}
 		fdLock = new Lock();
-		//fdLock.acquire();
 		fileDescriptors.add(UserKernel.console.openForReading());
 		fileDescriptors.add(UserKernel.console.openForWriting());
-		//fdLock.release();
 		pidCountLock = new Lock();
 		processLock = new Lock();
 		Machine.processor().setExceptionHandler(new Runnable() {

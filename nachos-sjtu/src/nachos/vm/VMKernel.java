@@ -1,6 +1,9 @@
 package nachos.vm;
 
+import java.util.HashMap;
+
 import nachos.userprog.UserKernel;
+import nachos.machine.TranslationEntry;
 
 /**
  * A kernel that can support multiple demand-paging user processes.
@@ -42,4 +45,5 @@ public class VMKernel extends UserKernel {
 	}
 
 	private static final char dbgVM = 'v';
+	public static HashMap<VMPage, TranslationEntry> ipTable;
 }
