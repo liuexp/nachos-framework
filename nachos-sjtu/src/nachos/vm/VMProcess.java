@@ -1,9 +1,15 @@
 package nachos.vm;
 
+import java.util.LinkedList;
+
+import nachos.threads.Lock;
+import nachos.machine.CoffSection;
+import nachos.machine.Config;
 import nachos.machine.Lib;
 import nachos.machine.Machine;
 import nachos.machine.Processor;
 import nachos.machine.TranslationEntry;
+import nachos.userprog.UserKernel;
 import nachos.userprog.UserProcess;
 
 /**
@@ -48,15 +54,24 @@ public class VMProcess extends UserProcess {
 	 * @return <tt>true</tt> if successful.
 	 */
 	protected boolean loadSections() {
-		//delay loading executables, just setup specific entries, note that changes should be written to swap rather than executables
-		return super.loadSections();
+		return true;
 	}
 
 	/**
 	 * Release any resources allocated by <tt>loadSections()</tt>.
 	 */
 	protected void unloadSections() {
-		super.unloadSections();
+		tableLock.acquire();
+		LinkedList<VMPage> toBeFreed = new LinkedList<VMPage>();
+		for(VMPage k: VMKernel.getKernel().ipTable.keySet()){
+			if(k.pid == this.pid){
+				toBeFreed.add(k);
+			}
+		}
+		for(VMPage k: toBeFreed)
+			freePage(k);
+		tableLock.release();
+		coff.close();
 	}
 
 	/**
@@ -82,22 +97,157 @@ public class VMProcess extends UserProcess {
 				}
 			}
 			TranslationEntry oldEntry = processor.readTLBEntry(idx);
+			tableLock.acquire();
 			if(oldEntry.valid){
-				pageTable[oldEntry.vpn].dirty |= oldEntry.dirty;
-				pageTable[oldEntry.vpn].used|= oldEntry.used;
+				TranslationEntry page = getPage(this.pid, oldEntry.vpn);
+				if(page != null){
+					page.dirty |= oldEntry.dirty;
+					page.used|= oldEntry.used;
+				}
 			}
-			//FIXME: use a single global pageTable
-			if(vpn<0 || vpn >= pageTable.length)handleException(Processor.exceptionBusError);
-			processor.writeTLBEntry(idx, pageTable[vpn]);
+			if(vpn<0)handleException(Processor.exceptionBusError);
+			processor.writeTLBEntry(idx, reqPage(pid, vpn));
+			tableLock.release();
 			break;
 		default:
 			super.handleException(cause);
 			break;
 		}
 	}
+	
+	@Override
+	public int copyVirtualMemory(int vaddr, byte[] data, int offset, int length, boolean read) {
+		try{
+			Lib.assertTrue(offset >= 0 && length >= 0
+					&& offset + length <= data.length);
+	
+			Processor p = Machine.processor();
+			byte[] memory = p.getMemory();
+	
+			if(vaddr < 0)handleException(Processor.exceptionAddressError);
+			int curVpn = Processor.pageFromAddress(vaddr);
+			int curOffset = offset;
+			int tot = 0;
+			int vOffset = Processor.offsetFromAddress(vaddr);
+			while(length > 0){
+				tableLock.acquire();
+				TranslationEntry e = reqPage(this.pid,curVpn);
+				int ppn = e.ppn;
+				int paddr = Processor.makeAddress(ppn, vOffset); 
+				int amount = Math.min(length, pageSize - vOffset);
+				if (paddr < 0 || paddr >= memory.length || amount < 0)break;
+	
+				if(read)
+					System.arraycopy(memory, paddr, data, curOffset, amount);
+				else
+					System.arraycopy(data, curOffset, memory, paddr, amount);
+				e.used = true;
+				tableLock.release();
+				curOffset += amount;
+				
+				tot += amount;
+				curVpn++;
+				length -= amount;
+				vOffset = 0;
+			}
+	
+			return tot;
+		} catch(Exception e){
+			e.printStackTrace();
+			return 0;
+		} finally{
+			if(tableLock.isHeldByCurrentThread())
+				tableLock.release();
+		}
+	}
+	
+	@Override
+	protected int allocPage(int vpn) {
+		int ppn = -1;
+		int pn = Machine.processor().getNumPhysPages();
+		
+		for(int i=0;i<pn;i++){
+			UserKernel.phyTableLock.acquire();
+			if(!UserKernel.phyTable[i]){
+				UserKernel.phyTable[i]=true;
+				ppn=i;
+				UserKernel.phyTableLock.release();
+				break;
+			}
+			UserKernel.phyTableLock.release();
+		}
+		//TODO:swap out
+		if(ppn<0)
+			handleException(Processor.exceptionBusError);
+		VMKernel.getKernel().ipTable.put(new VMPage(this.pid, vpn), new TranslationEntry(vpn, ppn, true, false, false, false));
+		return ppn;
+	}
+	
+	public TranslationEntry getPage(int pid, int vpn){
+		return getPage(new VMPage(pid,vpn));
+	}
+
+	public TranslationEntry getPage(VMPage page) {
+		// TODO: load from swap
+		return VMKernel.getKernel().ipTable.get(page);
+	}
+	
+	public TranslationEntry reqPage(VMPage page){
+		TranslationEntry ret = VMKernel.getKernel().ipTable.get(page);
+		if(ret != null) return ret;
+		int vpn = page.vpn;
+		allocPage(vpn);
+		ret = VMKernel.getKernel().ipTable.get(page);
+		
+		if (numPages - stackPages - argPages > vpn){
+			// load sections
+			for (int s = 0; s < coff.getNumSections(); s++) {
+				CoffSection section = coff.getSection(s);
+
+				Lib.debug(dbgProcess, "\t(forced) initializing " + section.getName()
+						+ " section (" + section.getLength() + " pages)");
+				int firstVpn = section.getFirstVPN(); 
+				if (firstVpn <= vpn && vpn < firstVpn + section.getLength()) {
+					section.loadPage(vpn - firstVpn, ret.ppn);
+					ret.readOnly = section.isReadOnly();
+					break;
+				}
+			}
+		}
+		return ret;
+	}
+
+	public TranslationEntry reqPage(int pid, int vpn) {
+		return reqPage(new VMPage(pid,vpn));
+	}
+
+	public void freePage(int pid, int vpn){
+		freePage(new VMPage(pid,vpn));
+	}
+
+	public void freePage(VMPage p) {
+		TranslationEntry e = VMKernel.getKernel().ipTable.get(p);
+		Processor proc = Machine.processor();
+		for(int i=0;i<proc.getTLBSize();i++){
+			TranslationEntry oldEntry = proc.readTLBEntry(i);
+			if(oldEntry.vpn == e.vpn){
+				oldEntry.valid = false;
+				proc.writeTLBEntry(i, oldEntry);
+			}
+		}
+		UserKernel.phyTableLock.acquire();
+		UserKernel.phyTable[e.ppn]=false;
+		UserKernel.phyTableLock.release();
+		VMKernel.getKernel().ipTable.remove(p);
+		e.ppn = -1;
+		e.valid=false;
+	}
 
 	private static final int pageSize = Processor.pageSize;
 	private static final char dbgProcess = 'a';
 	private static final char dbgVM = 'v';
+	public static Lock tableLock = new Lock();
 	private TranslationEntry [] myTLB = new TranslationEntry[Machine.processor().getTLBSize()];
+	protected final int argPages = Config.getInteger("Processor.numArgPages", 1);
+
 }

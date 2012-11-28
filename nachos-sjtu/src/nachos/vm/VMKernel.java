@@ -43,7 +43,15 @@ public class VMKernel extends UserKernel {
 	public void terminate() {
 		super.terminate();
 	}
+	
 
+	
+	public static VMKernel getKernel() {
+		return (VMKernel) kernel;
+	}
+	
 	private static final char dbgVM = 'v';
-	public static HashMap<VMPage, TranslationEntry> ipTable;
+	public HashMap<VMPage, TranslationEntry> ipTable = new HashMap<VMPage, TranslationEntry> ();
+	
+	
 }

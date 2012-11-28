@@ -142,33 +142,47 @@ public class UserProcess {
 	 * @return the number of bytes successfully transferred.
 	 */
 	public int readVirtualMemory(int vaddr, byte[] data, int offset, int length) {
-		Lib.assertTrue(offset >= 0 && length >= 0
-				&& offset + length <= data.length);
-
-		byte[] memory = Machine.processor().getMemory();
-
-		if(vaddr < 0)handleException(Processor.exceptionAddressError);
-		int curVpn = vaddr / pageSize;
-		int curOffset = offset;
-		int tot = 0;
-		int vOffset = vaddr % pageSize;
-		while(length > 0){
-			int ppn = pageTable[curVpn].valid? pageTable[curVpn].ppn : -1;
-			int paddr = ppn * pageSize + vOffset; 
-			int amount = Math.min(length, pageSize - vOffset);
-			if (paddr < 0 || paddr >= memory.length || amount < 0)break;
-			//FIXME: should we go on or quit as quick as possible?
-
-			System.arraycopy(memory, paddr, data, curOffset, amount);
-			curOffset += amount;
-			
-			tot += amount;
-			curVpn++;
-			length -= amount;
-			vOffset = 0;
+		return copyVirtualMemory(vaddr, data, offset, length, true);
+	}
+	
+	public int copyVirtualMemory(int vaddr, byte[] data, int offset, int length, boolean read){
+		try{
+			Lib.assertTrue(offset >= 0 && length >= 0
+					&& offset + length <= data.length);
+			Processor p = Machine.processor();
+			byte[] memory = p.getMemory();
+	
+			if(vaddr < 0)handleException(Processor.exceptionAddressError);
+			int curVpn = Processor.pageFromAddress(vaddr);
+			int curOffset = offset;
+			int tot = 0;
+			int vOffset = Processor.offsetFromAddress(vaddr);
+			while(length > 0){
+				int ppn = pageTable[curVpn].valid? pageTable[curVpn].ppn : -1;
+				ppn = (read||!pageTable[curVpn].readOnly)?ppn:-1;
+				int paddr = Processor.makeAddress(ppn, vOffset); 
+				int amount = Math.min(length, pageSize - vOffset);
+				if (paddr < 0 || paddr >= memory.length || amount < 0)break; 
+				
+				if(read)
+					System.arraycopy(memory, paddr, data, curOffset, amount);
+				else
+					System.arraycopy(data, curOffset, memory, paddr, amount);
+				
+				curOffset += amount;
+				
+				tot += amount;
+				curVpn++;
+				length -= amount;
+				vOffset = 0;
+			}
+	
+			return tot;
+		} catch (Exception e){
+			return 0;
+		} finally{
+			//do nothing
 		}
-
-		return tot;
 	}
 
 	/**
@@ -204,32 +218,7 @@ public class UserProcess {
 	 * @return the number of bytes successfully transferred.
 	 */
 	public int writeVirtualMemory(int vaddr, byte[] data, int offset, int length) {
-		Lib.assertTrue(offset >= 0 && length >= 0
-				&& offset + length <= data.length);
-
-		byte[] memory = Machine.processor().getMemory();
-		
-		if(vaddr < 0)handleException(Processor.exceptionAddressError);
-		int curVpn = vaddr / pageSize;
-		int curOffset = offset;
-		int tot = 0;
-		int vOffset = vaddr % pageSize;
-		while(length > 0){
-			int ppn = pageTable[curVpn].valid && !pageTable[curVpn].readOnly? pageTable[curVpn].ppn : -1;
-			int paddr = ppn * pageSize + vOffset; 
-			int amount = Math.min(length, pageSize - vOffset);
-			if (paddr < 0 || paddr >= memory.length || amount < 0)break;
-			//FIXME: should we go on or quit as quick as possible?
-
-			System.arraycopy(data, curOffset, memory, paddr, amount);
-			curOffset += amount;
-			
-			tot += amount;
-			curVpn++;
-			length -= amount;
-			vOffset = 0;
-		}
-		return tot;
+		return copyVirtualMemory(vaddr, data, offset, length, false);
 	}
 
 	/**
@@ -298,11 +287,6 @@ public class UserProcess {
 
 		// and finally reserve 1 page for arguments
 		numPages++;
-
-		pageTable = new TranslationEntry[numPages];
-		for (int i = 0; i < numPages; i++)
-			allocPage(i);
-			//pageTable[i] = new TranslationEntry(i, i, false, false, false, false);
 		
 		if (!loadSections())
 			return false;
@@ -328,7 +312,6 @@ public class UserProcess {
 							new byte[] { 0 }) == 1);
 			stringOffset += 1;
 		}
-		executable.close();
 
 		return true;
 	}
@@ -346,6 +329,11 @@ public class UserProcess {
 			Lib.debug(dbgProcess, "\tinsufficient physical memory numPages="+numPages +", PhysPages="+Machine.processor().getNumPhysPages());
 			return false;
 		}
+		
+		pageTable = new TranslationEntry[numPages];
+		for (int i = 0; i < numPages; i++)
+			allocPage(i);
+			//pageTable[i] = new TranslationEntry(i, i, false, false, false, false);
 
 		// load sections
 		for (int s = 0; s < coff.getNumSections(); s++) {
@@ -357,8 +345,6 @@ public class UserProcess {
 			for (int i = 0; i < section.getLength(); i++) {
 				int vpn = section.getFirstVPN() + i;
 
-				// for now, just assume virtual addresses=physical addresses
-				//section.loadPage(i, vpn);
 				int ppn = pageTable[vpn].ppn;//allocPage(vpn, section.isReadOnly());
 				pageTable[vpn].readOnly = section.isReadOnly();
 				
@@ -369,7 +355,7 @@ public class UserProcess {
 		return true;
 	}
 
-	private int allocPage(int vpn) {
+	protected int allocPage(int vpn) {
 		int ppn = -1;
 		int pn = Machine.processor().getNumPhysPages();
 		
@@ -383,7 +369,6 @@ public class UserProcess {
 			}
 			UserKernel.phyTableLock.release();
 		}
-		//FIXME: how to handle exception like this?
 		if(ppn<0)handleException(Processor.exceptionBusError);
 		pageTable[vpn]=new TranslationEntry(vpn,ppn,true,false,false,false);
 		return ppn;
@@ -401,6 +386,7 @@ public class UserProcess {
 				e.valid=false;
 			}
 		}
+		coff.close();
 	}
 
 	/**

@@ -9,6 +9,11 @@ public class VMPage {
 		this.vpn = e.vpn;
 	}
 	
+	public VMPage(int pid, int vpn){
+		this.pid = pid;
+		this.vpn = vpn;
+	}
+	
 	public String toString(){
 		return pid + "," + vpn;
 	}

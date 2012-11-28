@@ -6,3 +6,4 @@ bin/
 *.zip
 test/conf/
 *.jar
+test/
