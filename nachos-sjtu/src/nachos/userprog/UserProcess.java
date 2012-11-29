@@ -2,6 +2,7 @@ package nachos.userprog;
 
 import nachos.machine.*;
 import nachos.threads.*;
+import nachos.vm.VMPage;
 
 import java.io.EOFException;
 import java.util.ArrayList;
@@ -150,7 +151,7 @@ public class UserProcess {
 			Lib.assertTrue(offset >= 0 && length >= 0
 					&& offset + length <= data.length);
 			Processor p = Machine.processor();
-			byte[] memory = p.getMemory();
+			byte[] memory  = p.getMemory();
 	
 			if(vaddr < 0)handleException(Processor.exceptionAddressError);
 			int curVpn = Processor.pageFromAddress(vaddr);
@@ -361,8 +362,8 @@ public class UserProcess {
 		
 		for(int i=0;i<pn;i++){
 			UserKernel.phyTableLock.acquire();
-			if(!UserKernel.phyTable[i]){
-				UserKernel.phyTable[i]=true;
+			if(UserKernel.phyTable[i] == null){
+				UserKernel.phyTable[i]=new VMPage(this.pid, vpn);
 				ppn=i;
 				UserKernel.phyTableLock.release();
 				break;
@@ -381,7 +382,7 @@ public class UserProcess {
 		for (TranslationEntry e : pageTable){
 			if(e.valid){
 				UserKernel.phyTableLock.acquire();
-				UserKernel.phyTable[e.ppn] = false;
+				UserKernel.phyTable[e.ppn] = null;
 				UserKernel.phyTableLock.release();
 				e.valid=false;
 			}
@@ -525,7 +526,6 @@ public class UserProcess {
 		}
 	}
 
-	//FIXME: implement file locking?
 	private int handleUnlink(int a0) {
 		try {
 			String name = readVirtualMemoryString(a0,256);

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 
 import nachos.machine.*;
 import nachos.threads.*;
+import nachos.vm.VMPage;
 
 /**
  * A kernel that can support multiple user processes.
@@ -25,11 +26,11 @@ public class UserKernel extends ThreadedKernel {
 
 		console = new SynchConsole(Machine.console());
 		int pn = Machine.processor().getNumPhysPages();
-		phyTable = new Boolean [pn];
+		phyTable = new VMPage [pn];
 		phyTableLock = new Lock();
 		
 		for(int i=0;i<pn;i++){
-			phyTable[i]=false;
+			phyTable[i]=null;
 		}
 		fdLock = new Lock();
 		fileDescriptors.add(UserKernel.console.openForReading());
@@ -123,7 +124,7 @@ public class UserKernel extends ThreadedKernel {
 	/** Globally accessible reference to the synchronized console. */
 	public static SynchConsole console;
 	//public static ArrayList<Boolean> phyTable;
-	public static Boolean [] phyTable;//FIXME: only a linkedlist of free memory entries is enough
+	public static VMPage [] phyTable;
 	public static Lock phyTableLock;
 	public static int pidMain;
 	public static int pidCount = 1;
