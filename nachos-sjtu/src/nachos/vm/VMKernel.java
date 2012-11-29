@@ -83,7 +83,13 @@ public class VMKernel extends UserKernel {
 			System.out.println("[Luck]Not so lucky!");
 			 for(int i=0;i<p.getTLBSize();i++){
 					if(p.readTLBEntry(i).ppn == ppn){
-						p.writeTLBEntry(i, new TranslationEntry());
+						TranslationEntry oldEntry = p.readTLBEntry(i);
+						if(oldEntry!= null&& oldEntry.valid){
+							TranslationEntry oldEntry2 = VMKernel.getKernel().ipTable.get(UserKernel.phyTable[oldEntry.ppn]);
+							oldEntry2.used |= oldEntry.used;
+							oldEntry2.dirty |= oldEntry.dirty;
+						}
+						p.writeTLBEntry(i, VMProcess.nullEntry);
 					}
 			}
 		}
@@ -96,6 +102,7 @@ public class VMKernel extends UserKernel {
 		}
 		ipTable.remove(page);
 		System.out.println("[SWAP out chosen]"+ppn + " ," + page.toString());
+		// FIXME: the dirty bit is not correctly set
 		if(!e.readOnly && e.dirty){
 			System.out.println("[SWAP out]"+ppn + " ," + page.toString());
 			swapLock.acquire();
