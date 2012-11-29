@@ -262,6 +262,7 @@ public class UserProcess {
 				return false;
 			}
 			numPages += section.getLength();
+			Lib.debug(dbgProcess, section.getName()+":"+section.getFirstVPN());
 		}
 		Lib.debug(dbgProcess, "number of pages:"+numPages);
 

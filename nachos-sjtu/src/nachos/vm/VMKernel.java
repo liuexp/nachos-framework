@@ -28,7 +28,7 @@ public class VMKernel extends UserKernel {
 	 */
 	public void initialize(String[] args) {
 		super.initialize(args);
-		swapFile = fileSystem.open("swap",true);
+		swapFile = fileSystem.open(swapFileName,true);
 		swapLock = new Lock();
 	}
 
@@ -50,13 +50,13 @@ public class VMKernel extends UserKernel {
 	 * Terminate this kernel. Never returns.
 	 */
 	public void terminate() {
-		super.terminate();
 		swapFile.close();
 		swapFile = null;
 		swapTable.clear();
 		swapFree.clear();
 		swapSize = 0;
-		fileSystem.remove("swap");
+		fileSystem.remove(swapFileName);
+		super.terminate();
 	}
 	
 	/**
@@ -68,7 +68,7 @@ public class VMKernel extends UserKernel {
 		byte [] memory = p.getMemory();
 		int ppn=-1;
 		boolean flag = true;
-		int luckyNumber = 1000;
+		int luckyNumber = 11;
 		int currentLuck = 0;
 		while(flag&&currentLuck < luckyNumber){
 			 ppn = Lib.random(Machine.processor().getNumPhysPages());
@@ -78,6 +78,7 @@ public class VMKernel extends UserKernel {
 			}
 			 currentLuck++;
 		}
+		//invalidate TLB entry
 		if(flag){
 			System.out.println("[Luck]Not so lucky!");
 			 for(int i=0;i<p.getTLBSize();i++){
@@ -93,6 +94,7 @@ public class VMKernel extends UserKernel {
 		if(e==null){
 			Lib.assertNotReached("swapOut here?");
 		}
+		ipTable.remove(page);
 		System.out.println("[SWAP out chosen]"+ppn + " ," + page.toString());
 		if(!e.readOnly && e.dirty){
 			System.out.println("[SWAP out]"+ppn + " ," + page.toString());
@@ -164,5 +166,5 @@ public class VMKernel extends UserKernel {
 	public LinkedList<Integer> swapFree = new LinkedList<Integer> ();
 	public int swapSize = 0;
 	public Lock swapLock;
-	
+	public static final String swapFileName = "swap";
 }

@@ -32,12 +32,14 @@ public class VMProcess extends UserProcess {
 		for(int i=0;i<p.getTLBSize();i++){
 			myTLB[i] = p.readTLBEntry(i);
 			p.writeTLBEntry(i, new TranslationEntry());
-			if(myTLB[i] == null)continue;
+			if(myTLB[i] == null||!myTLB[i].valid)continue;
 			TranslationEntry pageEntry = VMKernel.getKernel().ipTable.get(new VMPage(this.pid, myTLB[i].vpn));
-			if(pageEntry == null) continue;
+			if(pageEntry == null) //continue;
+				Lib.assertNotReached("saveState impossible!");
 			pageEntry.used = myTLB[i].used;
 			pageEntry.dirty = myTLB[i].dirty;
 		}
+		
 	}
 
 	/**
@@ -46,12 +48,26 @@ public class VMProcess extends UserProcess {
 	 */
 	public void restoreState() {
 		Processor p = Machine.processor();
+		//Lib.debug(dbgProcess, "restoring states of "+pid);
 		for(int i=0;i<p.getTLBSize();i++){
 			if(myTLB[i]==null)continue;
 			TranslationEntry pageEntry = VMKernel.getKernel().ipTable.get(new VMPage(this.pid, myTLB[i].vpn));
 			if(pageEntry != null)p.writeTLBEntry(i, myTLB[i]);
 			else p.writeTLBEntry(i, new TranslationEntry());
+			myTLB[i]=null;
 			//if(numPages - stackPages - argPages <= myTLB[i].vpn)reqPage(new VMPage(this.pid, myTLB[i].vpn));
+		}
+		dumpTLB();
+		dumpPageTable();
+	}
+
+	public void dumpTLB() {
+		Processor p = Machine.processor();
+		System.out.println("=========TLB dump==========");
+		for(int i=0;i<p.getTLBSize();i++){
+			TranslationEntry e = p.readTLBEntry(i);
+			//if(!e.valid)continue;
+			System.out.println(e.vpn + ", ppn="+ e.ppn + ", used=" + e.used+ ", readOnly=" + e.readOnly+ ", valid=" + e.valid);
 		}
 	}
 
@@ -99,6 +115,7 @@ public class VMProcess extends UserProcess {
 			int vaddr = processor.readRegister(Processor.regBadVAddr);
 			int vpn = Processor.pageFromAddress(vaddr);
 			int idx = Lib.random(processor.getTLBSize());
+			Lib.debug(dbgProcess, "TLB miss! "+vpn);
 			for (int i=0;i<processor.getTLBSize();i++){
 				if(!processor.readTLBEntry(i).valid){
 					idx = i;
@@ -118,11 +135,26 @@ public class VMProcess extends UserProcess {
 			if(vpn<0)handleException(Processor.exceptionBusError);
 			processor.writeTLBEntry(idx, reqPage(pid, vpn));
 			tableLock.release();
+			Lib.debug(dbgProcess, "TLB miss resolved! "+vpn);
+			dumpPageTable();
+			dumpTLB();
 			break;
+//		case Processor.exceptionReadOnly:
+//			System.out.println("vbadaddr="+processor.readRegister(Processor.regBadVAddr));
 		default:
 			super.handleException(cause);
 			break;
 		}
+	}
+	
+	public void dumpPageTable(){
+		//tableLock.acquire();
+		System.out.println("-----------page table dump---------");
+		for(VMPage x : VMKernel.getKernel().ipTable.keySet()){
+			TranslationEntry e = VMKernel.getKernel().ipTable.get(x);
+			System.out.println(x+":"+e.ppn+", readOnly="+e.readOnly);
+		}
+		//tableLock.release();
 	}
 	
 	@Override
@@ -190,8 +222,12 @@ public class VMProcess extends UserProcess {
 			}
 			UserKernel.phyTableLock.release();
 		}
-		if(ppn<0)
+		if(ppn<0){
 			ppn = VMKernel.getKernel().swapOut();
+			UserKernel.phyTableLock.acquire();
+			UserKernel.phyTable[ppn]=new VMPage(this.pid, vpn);
+			UserKernel.phyTableLock.release();	
+		}
 			//handleException(Processor.exceptionBusError);
 		VMKernel.getKernel().ipTable.put(new VMPage(this.pid, vpn), new TranslationEntry(vpn, ppn, true, false, false, false));
 		return ppn;
@@ -203,7 +239,9 @@ public class VMProcess extends UserProcess {
 
 	public TranslationEntry getPage(VMPage page) {
 		Lib.assertTrue(tableLock.isHeldByCurrentThread());
-		return VMKernel.getKernel().ipTable.get(page);
+		TranslationEntry ret =VMKernel.getKernel().ipTable.get(page);
+		Lib.assertTrue(ret.valid);
+		return ret;
 	}
 	
 	public TranslationEntry reqPage(VMPage page){
@@ -226,6 +264,7 @@ public class VMProcess extends UserProcess {
 				if (firstVpn <= vpn && vpn < firstVpn + section.getLength()) {
 					section.loadPage(vpn - firstVpn, ret.ppn);
 					ret.readOnly = section.isReadOnly();
+					ret.valid = true;
 					break;
 				}
 			}
