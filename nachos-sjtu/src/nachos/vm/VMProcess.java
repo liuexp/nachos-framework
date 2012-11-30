@@ -44,7 +44,7 @@ public class VMProcess extends UserProcess {
 	 */
 	public void restoreState() {
 		Processor p = Machine.processor();
-		Lib.debug(dbgVM, "restoring states of "+pid);
+		Lib.debug(dbgProcess, "restoring states of "+pid);
 		for(int i=0;i<p.getTLBSize();i++){
 			TranslationEntry pageEntry = myTLB[i]!=null? getPage(this.pid, myTLB[i]) : null;
 			if(pageEntry != null){	
@@ -202,20 +202,20 @@ public class VMProcess extends UserProcess {
 		int pn = Machine.processor().getNumPhysPages();
 		
 		for(int i=0;i<pn;i++){
-			UserKernel.phyTableLock.acquire();
+//			UserKernel.phyTableLock.acquire();
 			if(UserKernel.phyTable[i] == null){
 				UserKernel.phyTable[i]=new VMPage(this.pid, vpn);
 				ppn=i;
-				UserKernel.phyTableLock.release();
+//				UserKernel.phyTableLock.release();
 				break;
 			}
-			UserKernel.phyTableLock.release();
+//			UserKernel.phyTableLock.release();
 		}
 		if(ppn<0){
 			ppn = VMKernel.getKernel().swapOut();
-			UserKernel.phyTableLock.acquire();
+//			UserKernel.phyTableLock.acquire();
 			UserKernel.phyTable[ppn]=new VMPage(this.pid, vpn);
-			UserKernel.phyTableLock.release();	
+//			UserKernel.phyTableLock.release();	
 		}
 		VMKernel.getKernel().ipTable.put(UserKernel.phyTable[ppn], new TranslationEntry(vpn, ppn, true, false, false, false));
 		return ppn;
@@ -272,14 +272,6 @@ public class VMProcess extends UserProcess {
 	public void freePage(VMPage p) {
 		Lib.assertTrue(tableLock.isHeldByCurrentThread());
 		TranslationEntry e = getPage(p);
-		Processor proc = Machine.processor();
-		/*for(int i=0;i<proc.getTLBSize();i++){
-			TranslationEntry oldEntry = proc.readTLBEntry(i);
-			if(oldEntry.vpn == e.vpn){
-				oldEntry.valid = false;
-				proc.writeTLBEntry(i, oldEntry);
-			}
-		}*/
 		UserKernel.phyTableLock.acquire();
 		UserKernel.phyTable[e.ppn]=null;
 		UserKernel.phyTableLock.release();

@@ -3,7 +3,6 @@ package nachos.vm;
 import java.util.HashMap;
 import java.util.LinkedList;
 
-import nachos.threads.Lock;
 import nachos.userprog.UserKernel;
 import nachos.machine.Lib;
 import nachos.machine.Machine;
@@ -29,7 +28,7 @@ public class VMKernel extends UserKernel {
 	public void initialize(String[] args) {
 		super.initialize(args);
 		swapFile = fileSystem.open(swapFileName,true);
-		swapLock = new Lock();
+//		swapLock = new Lock();
 	}
 
 	/**
@@ -88,7 +87,7 @@ public class VMKernel extends UserKernel {
 			}
 		}
 		
-		phyTableLock.acquire();
+//		phyTableLock.acquire();
 		VMPage page = phyTable[ppn];
 		TranslationEntry e = ipTable.get(page);
 		if(e==null){
@@ -101,7 +100,7 @@ public class VMKernel extends UserKernel {
 
 		if(!e.readOnly && e.dirty){
 			Lib.debug(dbgVM, "[SWAP out]"+ppn + " ," + page.toString());
-			swapLock.acquire();
+//			swapLock.acquire();
 			Integer pos = swapTable.get(page);
 			if(pos == null){
 				if(swapFree.isEmpty()){
@@ -113,12 +112,12 @@ public class VMKernel extends UserKernel {
 			}
 			swapFile.write(pos, memory, Processor.makeAddress(ppn, 0), pageSize);
 			swapTable.put(page, pos);
-			swapLock.release();
+//			swapLock.release();
 		}
 		e.valid = false;
 		e.ppn = -1;
 		phyTable[ppn] = null;
-		phyTableLock.release();
+//		phyTableLock.release();
 		return ppn;
 	}
 	
@@ -143,23 +142,23 @@ public class VMKernel extends UserKernel {
 	public boolean swapIn(VMPage page){
 		//Lib.assertTrue(VMProcess.tableLock.isHeldByCurrentThread());
 		Processor p = Machine.processor();
-		swapLock.acquire();
+//		swapLock.acquire();
 		Integer pos = swapTable.get(page);
 		TranslationEntry e = ipTable.get(page);
 		if(pos == null || e == null){
 			Lib.debug(dbgVM, "[SWAP in fault]"+page.toString());
-			swapLock.release();
+//			swapLock.release();
 			return false;
 		}
 		Lib.debug(dbgVM, "[SWAP in chosen]"+e.ppn + " ," + page.toString());
 		byte [] memory = p.getMemory();
 		swapFile.read(pos, memory, Processor.makeAddress(e.ppn, 0), pageSize);
-		swapLock.release();
+//		swapLock.release();
 		return true;
 	}
 	
 	public void freeSwap(VMProcess p){
-		swapLock.acquire();
+//		swapLock.acquire();
 		LinkedList<VMPage> toBeFreed = new LinkedList<VMPage> ();
 		for(VMPage x : swapTable.keySet()){
 			if(x.pid == p.pid)
@@ -169,7 +168,7 @@ public class VMKernel extends UserKernel {
 		for(VMPage x : toBeFreed){
 			swapFree.add(swapTable.remove(x));
 		}
-		swapLock.release();
+//		swapLock.release();
 	}
 	
 	public static VMKernel getKernel() {
@@ -184,6 +183,6 @@ public class VMKernel extends UserKernel {
 	public HashMap<VMPage, Integer> swapTable = new HashMap<VMPage, Integer> ();
 	public LinkedList<Integer> swapFree = new LinkedList<Integer> ();
 	public int swapSize = 0;
-	public Lock swapLock;
+	//public Lock swapLock;
 	public static final String swapFileName = "SWAP";
 }
