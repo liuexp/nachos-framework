@@ -68,7 +68,7 @@ public class VMKernel extends UserKernel {
 		byte [] memory = p.getMemory();
 		int ppn=-1;
 		boolean flag = true;
-		int luckyNumber = 11;
+		int luckyNumber = 3;
 		int currentLuck = 0;
 		while(flag&&currentLuck < luckyNumber){
 			 ppn = Lib.random(Machine.processor().getNumPhysPages());
@@ -80,16 +80,10 @@ public class VMKernel extends UserKernel {
 		}
 		//invalidate TLB entry
 		if(flag){
-			System.out.println("[Luck]Not so lucky!");
+			Lib.debug(dbgVM, "[Luck]Not so lucky!");
 			 for(int i=0;i<p.getTLBSize();i++){
 					if(p.readTLBEntry(i).ppn == ppn){
-						TranslationEntry oldEntry = p.readTLBEntry(i);
-						if(oldEntry!= null&& oldEntry.valid){
-							TranslationEntry oldEntry2 = VMKernel.getKernel().ipTable.get(UserKernel.phyTable[oldEntry.ppn]);
-							oldEntry2.used |= oldEntry.used;
-							oldEntry2.dirty |= oldEntry.dirty;
-						}
-						p.writeTLBEntry(i, VMProcess.nullEntry);
+						putTLBEntry(i, VMProcess.nullEntry);
 					}
 			}
 		}
@@ -100,11 +94,13 @@ public class VMKernel extends UserKernel {
 		if(e==null){
 			Lib.assertNotReached("swapOut here?");
 		}
-		ipTable.remove(page);
-		System.out.println("[SWAP out chosen]"+ppn + " ," + page.toString());
-		// FIXME: the dirty bit is not correctly set
+		TranslationEntry tmp = ipTable.remove(page);
+		Lib.assertTrue(tmp != null);
+		
+		Lib.debug(dbgVM, "[SWAP out chosen]"+ppn + " ," + page.toString());
+
 		if(!e.readOnly && e.dirty){
-			System.out.println("[SWAP out]"+ppn + " ," + page.toString());
+			Lib.debug(dbgVM, "[SWAP out]"+ppn + " ," + page.toString());
 			swapLock.acquire();
 			Integer pos = swapTable.get(page);
 			if(pos == null){
@@ -119,8 +115,25 @@ public class VMKernel extends UserKernel {
 			swapTable.put(page, pos);
 			swapLock.release();
 		}
+		e.valid = false;
+		e.ppn = -1;
+		phyTable[ppn] = null;
 		phyTableLock.release();
 		return ppn;
+	}
+	
+	public void putTLBEntry(int i, TranslationEntry e){
+		//Lib.assertTrue(VMProcess.tableLock.isHeldByCurrentThread());
+		Processor p = Machine.processor();
+		TranslationEntry oldEntry = p.readTLBEntry(i);
+		if(oldEntry!= null&& oldEntry.valid){
+			TranslationEntry oldEntry2 = VMKernel.getKernel().ipTable.get(UserKernel.phyTable[oldEntry.ppn]);
+			if(oldEntry2!=null){
+				oldEntry2.used |= oldEntry.used;
+				oldEntry2.dirty |= oldEntry.dirty;
+			}
+		}
+		p.writeTLBEntry(i, e);
 	}
 	
 	/**
@@ -134,11 +147,11 @@ public class VMKernel extends UserKernel {
 		Integer pos = swapTable.get(page);
 		TranslationEntry e = ipTable.get(page);
 		if(pos == null || e == null){
-			System.out.println("[SWAP in fault]"+page.toString());
+			Lib.debug(dbgVM, "[SWAP in fault]"+page.toString());
 			swapLock.release();
 			return false;
 		}
-		System.out.println("[SWAP in chosen]"+e.ppn + " ," + page.toString());
+		Lib.debug(dbgVM, "[SWAP in chosen]"+e.ppn + " ," + page.toString());
 		byte [] memory = p.getMemory();
 		swapFile.read(pos, memory, Processor.makeAddress(e.ppn, 0), pageSize);
 		swapLock.release();
@@ -154,8 +167,7 @@ public class VMKernel extends UserKernel {
 		}
 		
 		for(VMPage x : toBeFreed){
-			swapFree.add(swapTable.get(x));
-			swapTable.remove(x);
+			swapFree.add(swapTable.remove(x));
 		}
 		swapLock.release();
 	}
@@ -173,5 +185,5 @@ public class VMKernel extends UserKernel {
 	public LinkedList<Integer> swapFree = new LinkedList<Integer> ();
 	public int swapSize = 0;
 	public Lock swapLock;
-	public static final String swapFileName = "swap";
+	public static final String swapFileName = "SWAP";
 }

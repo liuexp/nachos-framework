@@ -3,6 +3,7 @@ package nachos.userprog;
 import nachos.machine.*;
 import nachos.threads.*;
 import nachos.vm.VMPage;
+import nachos.vm.VMProcess;
 
 import java.io.EOFException;
 import java.util.ArrayList;
@@ -745,7 +746,9 @@ public class UserProcess {
 		case Processor.exceptionReadOnly:
 		case Processor.exceptionTLBMiss:
 			Lib.debug(dbgProcess, "SIGKILL exception: "
-					+ Processor.exceptionNames[cause]);
+					+ Processor.exceptionNames[cause] + " for process " + pid);
+			VMProcess.dumpTLB();
+			VMProcess.dumpPageTable();
 			handleExit(-1);
 			break;
 		default:
